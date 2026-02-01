@@ -8,53 +8,6 @@ export type TipoFornecimento =
 export type TipoItemManutencao = "PRODUTO" | "SERVICO";
 export type TipoAdesao = "PARTICIPANTE" | "CARONA";
 
-export type OportunidadeStatusLista =
-  | "ABERTA"
-  | "PROPOSTA_ENVIADA"
-  | "AGUARDANDO_CLIENTE"
-  | "EM_PROCESSO_DE_ADESAO"
-  | "EM_ASSINATURA_DE_CONTRATO"
-  | "GANHAMOS"
-  | "PERDEMOS";
-
-export type OportunidadeTemperatura = "FRIA" | "MORNA" | "QUENTE";
-
-export type Estado = {
-  id: string;
-  nome: string;
-  sigla: string; // sempre 2 letras em maiúsculo
-};
-
-export type Cidade = {
-  id: string;
-  nome: string;
-  estadoId: string;
-};
-
-// 1..6, onde 5 = Assinado (vigente)
-export type ParceiroStatusContrato = 1 | 2 | 3 | 4 | 5 | 6;
-
-export type Parceiro = {
-  id: string;
-  nome: string;
-  cnpj: string; // armazenar apenas dígitos
-  nomeContato?: string;
-  telefoneContato?: string;
-  statusContrato: ParceiroStatusContrato;
-  estadosAtuacao: string[]; // Estado.id
-};
-
-export type InteracaoOportunidade = {
-  id: string;
-  oportunidadeId: string;
-  dataHora: string; // ISO datetime
-  descricao: string;
-  novoStatusLista?: OportunidadeStatusLista;
-  novaTemperatura?: OportunidadeTemperatura;
-  novaDataVencimento?: string; // ISO yyyy-mm-dd
-  usuario?: string;
-};
-
 export type Cliente = {
   id: string;
   nome: string;
@@ -124,45 +77,10 @@ export type OportunidadeItem = {
   quantidade: number;
 };
 
-export type Kit = {
-  id: string;
-  nomeKit: string;
-  arpId: string;
-  criadoEm: string; // ISO datetime
-  atualizadoEm: string; // ISO datetime
-};
-
-export type KitItem = {
-  id: string;
-  kitId: string;
-  loteId: string;
-  arpItemId: string;
-  quantidade: number;
-};
-
-export type OportunidadeKit = {
-  id: string;
-  oportunidadeId: string;
-  kitId: string;
-  quantidadeKits: number;
-};
-
-export type OportunidadeKitItem = {
-  id: string;
-  oportunidadeKitId: string;
-  loteId: string;
-  arpItemId: string;
-  quantidadeTotal: number;
-};
-
 export type Oportunidade = {
   id: string;
   codigo: number; // sequencial
   clienteId: string;
   arpId: string;
-  statusLista: OportunidadeStatusLista;
-  temperatura: OportunidadeTemperatura;
-  dataLancamento: string; // ISO yyyy-mm-dd
-  dataVencimento: string; // ISO yyyy-mm-dd
   itens: OportunidadeItem[];
 };
