@@ -35,22 +35,24 @@ export function ArpFormSheet({ open, onOpenChange, initial, clientes, onSubmit }
     setNomeAta(initial?.nomeAta ?? "");
     setClienteId(initial?.clienteId ?? clientes[0]?.id ?? "");
     setIsConsorcio(initial?.isConsorcio ?? false);
-    setDataAssinatura(initial?.dataAssinatura ?? "");
-    setDataVencimento(initial?.dataVencimento ?? "");
+    setDataAssinatura((initial as any)?.dataAssinatura ?? "");
+    setDataVencimento((initial as any)?.dataVencimento ?? "");
   }, [open, initial, clientes]);
 
   function submit() {
     if (!nomeAta.trim()) return setError("Informe o nome da ATA.");
     if (!clienteId) return setError("Selecione o cliente titular.");
-    if (dataVencimento && dataAssinatura && dataVencimento < dataAssinatura)
+    if (!dataAssinatura) return setError("Informe a data de assinatura.");
+    if (!dataVencimento) return setError("Informe a data de vencimento.");
+    if (dataVencimento < dataAssinatura)
       return setError("A data de vencimento deve ser maior ou igual à assinatura.");
 
     onSubmit({
       nomeAta: nomeAta.trim(),
       clienteId,
       isConsorcio,
-      dataAssinatura: dataAssinatura || undefined,
-      dataVencimento: dataVencimento || undefined,
+      dataAssinatura,
+      dataVencimento,
     });
     onOpenChange(false);
   }

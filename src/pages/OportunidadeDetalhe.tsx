@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
-import { ClienteFormSheet } from "@/components/clientes/ClienteFormSheet";
+import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,9 +24,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import type { Arp, ArpItem, ArpLote, Cliente, Oportunidade, TipoAdesao } from "@/lib/arp-types";
+import type {
+  Arp,
+  ArpItem,
+  ArpLote,
+  Oportunidade,
+  OportunidadeItem,
+  TipoAdesao,
+} from "@/lib/arp-types";
 import {
-  clienteLabel,
   consumoPorTipo,
   getArpStatus,
   getTipoAdesao,
@@ -34,51 +40,92 @@ import {
   max0,
   moneyBRL,
   round2,
+  uid,
 } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2, X } from "lucide-react";
 
 type RowError = { message: string };
 
+type Draft = {
+  id: string | null; // null para nova
+  codigo?: number;
+  clienteId: string;
+  arpId: string;
+  itens: Array<{
+    id: string;
+    loteId: string;
+    arpItemId: string;
+    quantidade: number;
+  }>;
+};
+
+function cloneDraftFromOportunidade(o: Oportunidade): Draft {
+  return {
+    id: o.id,
+    codigo: o.codigo,
+    clienteId: o.clienteId,
+    arpId: o.arpId,
+    itens: o.itens.map((i) => ({
+      id: i.id,
+      loteId: i.loteId,
+      arpItemId: i.arpItemId,
+      quantidade: i.quantidade,
+    })),
+  };
+}
+
 export default function OportunidadeDetalhePage() {
   const { id } = useParams();
-  const {
-    state,
-    updateOportunidade,
-    addOportunidadeItem,
-    updateOportunidadeItem,
-    deleteOportunidadeItem,
-    createCliente,
-  } = useArpStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const oportunidade = state.oportunidades.find((o) => o.id === id);
+  const { state, createCliente, createOportunidade, updateOportunidade, setOportunidadeItens } = useArpStore();
+
+  const isNew = id === "nova";
+  const persisted = !isNew ? state.oportunidades.find((o) => o.id === id) : undefined;
+
   const arpsById = React.useMemo(() => Object.fromEntries(state.arps.map((a) => [a.id, a])), [state.arps]);
-  const clientesById = React.useMemo(() => Object.fromEntries(state.clientes.map((c) => [c.id, c])), [state.clientes]);
 
-  const arp = oportunidade ? arpsById[oportunidade.arpId] : undefined;
-  const tipoAdesao: TipoAdesao = oportunidade ? getTipoAdesao(arp, oportunidade.clienteId) : "CARONA";
+  const vigentes = React.useMemo(() => state.arps.filter(isArpVigente), [state.arps]);
+
+  const [draft, setDraft] = React.useState<Draft | null>(null);
+  const originalRef = React.useRef<string>("");
 
   const [openCliente, setOpenCliente] = React.useState(false);
 
-  if (!oportunidade) {
-    return (
-      <AppLayout>
-        <Card className="rounded-3xl border p-6">
-          <div className="text-lg font-semibold tracking-tight">Oportunidade não encontrada</div>
-          <p className="mt-1 text-sm text-muted-foreground">Talvez ela tenha sido removida.</p>
-          <div className="mt-4">
-            <Button asChild className="rounded-2xl">
-              <Link to="/oportunidades">Voltar</Link>
-            </Button>
-          </div>
-        </Card>
-      </AppLayout>
-    );
-  }
+  React.useEffect(() => {
+    if (isNew) {
+      const fromCliente = searchParams.get("clienteId") ?? "";
+      const fromArp = searchParams.get("arpId") ?? "";
 
-  const vigentes = state.arps.filter(isArpVigente);
+      const fallbackCliente = state.clientes[0]?.id ?? "";
+      const fallbackArp = vigentes[0]?.id ?? "";
 
-  const lotes = arp?.lotes ?? [];
+      const next: Draft = {
+        id: null,
+        clienteId: fromCliente || fallbackCliente,
+        arpId: fromArp || fallbackArp,
+        itens: [],
+      };
+      setDraft(next);
+      originalRef.current = JSON.stringify(next);
+      return;
+    }
+
+    if (persisted) {
+      const next = cloneDraftFromOportunidade(persisted);
+      setDraft(next);
+      originalRef.current = JSON.stringify(next);
+    } else {
+      setDraft(null);
+    }
+  }, [isNew, persisted?.id, persisted?.clienteId, persisted?.arpId, persisted?.itens, searchParams, state.clientes, vigentes]);
+
+  const arp = draft ? arpsById[draft.arpId] : undefined;
+  const tipoAdesao: TipoAdesao = draft ? getTipoAdesao(arp, draft.clienteId) : "CARONA";
+
+  const lotes: ArpLote[] = arp?.lotes ?? [];
   const lotesById = React.useMemo(() => Object.fromEntries(lotes.map((l) => [l.id, l])), [lotes]);
   const itensById = React.useMemo(() => {
     const entries: [string, ArpItem][] = [];
@@ -88,12 +135,12 @@ export default function OportunidadeDetalhePage() {
 
   const qByArpItemId = React.useMemo(() => {
     const map: Record<string, number> = {};
-    for (const row of oportunidade.itens) {
+    for (const row of draft?.itens ?? []) {
       if (!row.arpItemId) continue;
       map[row.arpItemId] = (map[row.arpItemId] ?? 0) + (Number(row.quantidade) || 0);
     }
     return map;
-  }, [oportunidade.itens]);
+  }, [draft?.itens]);
 
   const validationByArpItemId = React.useMemo(() => {
     if (!arp) return {} as Record<string, RowError>;
@@ -111,19 +158,21 @@ export default function OportunidadeDetalhePage() {
         continue;
       }
 
+      const excludeId = persisted?.id;
+
       const consumoParticipanteOther = consumoPorTipo({
         oportunidades: state.oportunidades,
         arpsById: arpsIndex,
         arpItemId,
         tipo: "PARTICIPANTE",
-        excludeOportunidadeId: oportunidade.id,
+        excludeOportunidadeId: excludeId,
       });
       const consumoCaronaOther = consumoPorTipo({
         oportunidades: state.oportunidades,
         arpsById: arpsIndex,
         arpItemId,
         tipo: "CARONA",
-        excludeOportunidadeId: oportunidade.id,
+        excludeOportunidadeId: excludeId,
       });
 
       const saldoParticipante = max0(item.total - consumoParticipanteOther);
@@ -132,34 +181,177 @@ export default function OportunidadeDetalhePage() {
 
       if (tipoAdesao === "PARTICIPANTE") {
         if (qtdNaOpp > saldoParticipante) {
-          byId[arpItemId] = { message: "Excede saldo disponível do item para participantes." };
+          byId[arpItemId] = {
+            message: `Excede saldo disponível para PARTICIPANTES. Saldo atual: ${saldoParticipante}`,
+          };
         }
       } else {
         if (qtdNaOpp > limiteCarona) {
-          byId[arpItemId] = { message: "Em carona o limite por adesão é de 50% do item." };
+          byId[arpItemId] = {
+            message: `Em CARONA o limite por adesão é até 50% do item. Limite: ${limiteCarona}`,
+          };
         } else if (qtdNaOpp > saldoCarona) {
-          byId[arpItemId] = { message: "Excede saldo disponível de carona." };
+          byId[arpItemId] = { message: `Excede saldo disponível de CARONA. Saldo atual: ${saldoCarona}` };
         }
       }
     }
 
     return byId;
-  }, [arp, arpsById, itensById, oportunidade.id, oportunidade.itens, qByArpItemId, state.oportunidades, tipoAdesao]);
+  }, [arp, arpsById, itensById, persisted?.id, qByArpItemId, state.oportunidades, tipoAdesao]);
 
   const hasErrors = Object.keys(validationByArpItemId).length > 0;
+  const isDirty = draft ? JSON.stringify(draft) !== originalRef.current : false;
+
+  const canSave = Boolean(
+    draft &&
+      draft.clienteId &&
+      draft.arpId &&
+      (draft.itens?.length ?? 0) > 0 &&
+      !hasErrors &&
+      (arp ? getArpStatus(arp) === "VIGENTE" : false),
+  );
+
+  if (!draft) {
+    return (
+      <AppLayout>
+        <Card className="rounded-3xl border p-6">
+          <div className="text-lg font-semibold tracking-tight">Oportunidade não encontrada</div>
+          <p className="mt-1 text-sm text-muted-foreground">Talvez ela tenha sido removida.</p>
+          <div className="mt-4">
+            <Button asChild className="rounded-2xl">
+              <Link to="/oportunidades">Voltar</Link>
+            </Button>
+          </div>
+        </Card>
+      </AppLayout>
+    );
+  }
+
+  function setHeader(patch: Partial<Pick<Draft, "clienteId" | "arpId">>) {
+    setDraft((d) => (d ? { ...d, ...patch } : d));
+  }
 
   function addRow() {
-    if (!arp) {
+    const firstLote = lotes[0];
+    const firstItem = firstLote?.itens[0];
+
+    setDraft((d) => {
+      if (!d) return d;
+      return {
+        ...d,
+        itens: [
+          ...d.itens,
+          {
+            id: uid("oppi"),
+            loteId: firstLote?.id ?? "",
+            arpItemId: firstItem?.id ?? "",
+            quantidade: 1,
+          },
+        ],
+      };
+    });
+  }
+
+  function updateRow(rowId: string, patch: Partial<Draft["itens"][number]>) {
+    setDraft((d) => {
+      if (!d) return d;
+      return {
+        ...d,
+        itens: d.itens.map((r) => (r.id === rowId ? { ...r, ...patch } : r)),
+      };
+    });
+  }
+
+  function deleteRow(rowId: string) {
+    setDraft((d) => {
+      if (!d) return d;
+      return { ...d, itens: d.itens.filter((r) => r.id !== rowId) };
+    });
+  }
+
+  function cancel() {
+    if (!isDirty) {
+      navigate("/oportunidades");
+      return;
+    }
+
+    if (isNew) {
+      navigate("/oportunidades");
+      return;
+    }
+
+    if (persisted) {
+      const next = cloneDraftFromOportunidade(persisted);
+      setDraft(next);
+      originalRef.current = JSON.stringify(next);
+      toast({ title: "Alterações descartadas" });
+    }
+  }
+
+  function save() {
+    if (!draft.clienteId) {
+      toast({ title: "Selecione um cliente", variant: "destructive" });
+      return;
+    }
+    if (!draft.arpId) {
       toast({ title: "Selecione uma ATA vigente", variant: "destructive" });
       return;
     }
-    const firstLote = arp.lotes[0];
-    const firstItem = firstLote?.itens[0];
-    addOportunidadeItem(oportunidade.id, {
-      loteId: firstLote?.id ?? "",
-      arpItemId: firstItem?.id ?? "",
-      quantidade: 1,
-    });
+    if (draft.itens.length === 0) {
+      toast({ title: "Inclua ao menos 1 item", variant: "destructive" });
+      return;
+    }
+    if (hasErrors) {
+      toast({ title: "Existem erros no grid", description: "Ajuste as quantidades para continuar.", variant: "destructive" });
+      return;
+    }
+
+    // validações finais simples
+    for (const row of draft.itens) {
+      if (!row.loteId || !row.arpItemId) {
+        toast({ title: "Preencha lote e item", variant: "destructive" });
+        return;
+      }
+      if ((row.quantidade ?? 0) <= 0) {
+        toast({ title: "Quantidade deve ser maior que zero", variant: "destructive" });
+        return;
+      }
+    }
+
+    if (isNew) {
+      const created = createOportunidade({ clienteId: draft.clienteId, arpId: draft.arpId });
+      const itens: OportunidadeItem[] = draft.itens.map((r) => ({
+        id: r.id,
+        oportunidadeId: created.id,
+        loteId: r.loteId,
+        arpItemId: r.arpItemId,
+        quantidade: Number(r.quantidade) || 0,
+      }));
+      setOportunidadeItens(created.id, itens);
+
+      toast({ title: "Oportunidade salva", description: `Código ${created.codigo}` });
+      navigate(`/oportunidades/${created.id}`);
+      return;
+    }
+
+    if (!persisted) return;
+
+    updateOportunidade(persisted.id, { clienteId: draft.clienteId, arpId: draft.arpId });
+
+    const itens: OportunidadeItem[] = draft.itens.map((r) => ({
+      id: r.id,
+      oportunidadeId: persisted.id,
+      loteId: r.loteId,
+      arpItemId: r.arpItemId,
+      quantidade: Number(r.quantidade) || 0,
+    }));
+    setOportunidadeItens(persisted.id, itens);
+
+    const next = { ...draft, id: persisted.id, codigo: persisted.codigo };
+    originalRef.current = JSON.stringify(next);
+    setDraft(next);
+
+    toast({ title: "Oportunidade salva" });
   }
 
   return (
@@ -169,7 +361,9 @@ export default function OportunidadeDetalhePage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="text-lg font-semibold tracking-tight">Oportunidade #{oportunidade.codigo}</div>
+                <div className="text-lg font-semibold tracking-tight">
+                  {draft.codigo ? `Oportunidade #${draft.codigo}` : "Nova oportunidade"}
+                </div>
                 <Badge
                   className={
                     tipoAdesao === "PARTICIPANTE"
@@ -190,21 +384,30 @@ export default function OportunidadeDetalhePage() {
                     {getArpStatus(arp)}
                   </Badge>
                 )}
+                {isDirty && (
+                  <Badge variant="secondary" className="rounded-full">
+                    rascunho
+                  </Badge>
+                )}
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
                 O tipo é calculado automaticamente pela participação do cliente na ATA.
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Button
                 variant="secondary"
                 className="rounded-2xl"
-                onClick={() => addRow()}
-                disabled={!arp || arp.lotes.length === 0}
+                onClick={cancel}
+                disabled={!isDirty && !isNew}
               >
-                <Plus className="mr-2 size-4" />
-                Adicionar item
+                <X className="mr-2 size-4" />
+                Cancelar
+              </Button>
+              <Button className="rounded-2xl" onClick={save} disabled={!canSave}>
+                <Save className="mr-2 size-4" />
+                Salvar
               </Button>
             </div>
           </div>
@@ -215,25 +418,20 @@ export default function OportunidadeDetalhePage() {
             <div className="space-y-1.5">
               <Label>Cliente</Label>
               <div className="flex gap-2">
-                <Select
-                  value={oportunidade.clienteId}
-                  onValueChange={(v) => {
-                    updateOportunidade(oportunidade.id, { clienteId: v });
-                  }}
-                >
+                <Select value={draft.clienteId} onValueChange={(v) => setHeader({ clienteId: v })}>
                   <SelectTrigger className="h-11 flex-1 rounded-2xl">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
                     {state.clientes.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {clienteLabel(c)}
+                        {c.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Button variant="secondary" className="h-11 rounded-2xl" onClick={() => setOpenCliente(true)}>
-                  Novo
+                  Cadastrar cliente
                 </Button>
               </div>
             </div>
@@ -241,13 +439,9 @@ export default function OportunidadeDetalhePage() {
             <div className="space-y-1.5">
               <Label>ATA (vigente)</Label>
               <Select
-                value={oportunidade.arpId}
+                value={draft.arpId}
                 onValueChange={(v) => {
-                  updateOportunidade(oportunidade.id, { arpId: v });
-                  // estrutura mudou: limpa itens para evitar inconsistência
-                  // (mantém simples e evita itens "órfãos")
-                  // remove linhas existentes
-                  for (const row of oportunidade.itens) deleteOportunidadeItem(oportunidade.id, row.id);
+                  setDraft((d) => (d ? { ...d, arpId: v, itens: [] } : d));
                 }}
               >
                 <SelectTrigger className="h-11 rounded-2xl">
@@ -272,14 +466,23 @@ export default function OportunidadeDetalhePage() {
         </Card>
 
         <Card className="rounded-3xl border p-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-semibold tracking-tight">Itens da oportunidade</div>
               <div className="text-sm text-muted-foreground">Validação em tempo real por saldo e limite de carona.</div>
             </div>
-            {hasErrors && (
-              <Badge className="rounded-full bg-rose-600 text-white">há inconsistências</Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {hasErrors && <Badge className="rounded-full bg-rose-600 text-white">há erros</Badge>}
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={() => addRow()}
+                disabled={!arp || arp.lotes.length === 0}
+              >
+                <Plus className="mr-2 size-4" />
+                Adicionar item
+              </Button>
+            </div>
           </div>
 
           <div className="mt-4 overflow-hidden rounded-2xl border">
@@ -290,19 +493,19 @@ export default function OportunidadeDetalhePage() {
                   <TableHead>Item</TableHead>
                   <TableHead className="w-[130px]">Qtd</TableHead>
                   <TableHead className="w-[180px]">Valor ref.</TableHead>
-                  <TableHead className="w-[200px]">Total</TableHead>
+                  <TableHead className="w-[230px]">Total</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {oportunidade.itens.length === 0 ? (
+                {draft.itens.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       Adicione um item para começar.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  oportunidade.itens.map((row) => {
+                  draft.itens.map((row) => {
                     const lote = lotesById[row.loteId];
                     const item = itensById[row.arpItemId];
 
@@ -313,10 +516,9 @@ export default function OportunidadeDetalhePage() {
                       : 0;
 
                     const total = item
-                      ? item.kind === "MANUTENCAO"
-                        ? round2((Number(row.quantidade) || 0) * unitRef)
-                        : round2((Number(row.quantidade) || 0) * unitRef)
+                      ? round2((Number(row.quantidade) || 0) * unitRef)
                       : 0;
+
                     const totalLabel = item
                       ? item.kind === "MANUTENCAO"
                         ? `${moneyBRL(total)} /mês (Anual: ${moneyBRL(round2(total * 12))})`
@@ -333,7 +535,7 @@ export default function OportunidadeDetalhePage() {
                               value={row.loteId}
                               onValueChange={(v) => {
                                 const firstItem = lotesById[v]?.itens[0];
-                                updateOportunidadeItem(oportunidade.id, row.id, {
+                                updateRow(row.id, {
                                   loteId: v,
                                   arpItemId: firstItem?.id ?? "",
                                 });
@@ -356,7 +558,7 @@ export default function OportunidadeDetalhePage() {
                           <TableCell>
                             <Select
                               value={row.arpItemId}
-                              onValueChange={(v) => updateOportunidadeItem(oportunidade.id, row.id, { arpItemId: v })}
+                              onValueChange={(v) => updateRow(row.id, { arpItemId: v })}
                               disabled={!arp || !row.loteId}
                             >
                               <SelectTrigger className="h-10 rounded-2xl">
@@ -365,7 +567,12 @@ export default function OportunidadeDetalhePage() {
                               <SelectContent>
                                 {(lote?.itens ?? []).map((it) => (
                                   <SelectItem key={it.id} value={it.id}>
-                                    {it.numeroItem} • {it.descricao}
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">{it.descricaoInterna}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {it.numeroItem} - {it.descricao}
+                                      </span>
+                                    </div>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -376,7 +583,7 @@ export default function OportunidadeDetalhePage() {
                             <Input
                               value={row.quantidade}
                               onChange={(e) =>
-                                updateOportunidadeItem(oportunidade.id, row.id, {
+                                updateRow(row.id, {
                                   quantidade: Number(e.target.value || 0),
                                 })
                               }
@@ -401,7 +608,7 @@ export default function OportunidadeDetalhePage() {
                               variant="ghost"
                               size="icon"
                               className="rounded-2xl text-destructive hover:text-destructive"
-                              onClick={() => deleteOportunidadeItem(oportunidade.id, row.id)}
+                              onClick={() => deleteRow(row.id)}
                             >
                               <Trash2 className="size-4" />
                             </Button>
@@ -418,7 +625,7 @@ export default function OportunidadeDetalhePage() {
                                 {row.arpItemId && item && (
                                   <SaldoHint
                                     tipoAdesao={tipoAdesao}
-                                    oportunidadeId={oportunidade.id}
+                                    oportunidadeId={persisted?.id}
                                     item={item}
                                     arpsById={arpsById as any}
                                     oportunidades={state.oportunidades}
@@ -438,27 +645,21 @@ export default function OportunidadeDetalhePage() {
 
           {hasErrors && (
             <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              Ajuste as quantidades para respeitar saldo e limites. A validação considera todas as oportunidades já
-              cadastradas.
+              Ajuste as quantidades para respeitar saldo e limites. O botão SALVAR fica bloqueado enquanto existir erro.
             </div>
           )}
         </Card>
       </div>
 
-      <ClienteFormSheet
+      <ClienteFormDialog
         open={openCliente}
         onOpenChange={setOpenCliente}
+        cnpjTaken={(cnpjDigits) => state.clientes.some((c) => c.cnpj === cnpjDigits)}
         onSubmit={(data) => {
-          const cnpjTaken = state.clientes.some((c) => c.cnpj === data.cnpj);
-          if (cnpjTaken) {
-            toast({ title: "CNPJ já cadastrado", variant: "destructive" });
-            return;
-          }
           const cliente = createCliente(data);
-          updateOportunidade(oportunidade.id, { clienteId: cliente.id });
+          setDraft((d) => (d ? { ...d, clienteId: cliente.id } : d));
           toast({ title: "Cliente cadastrado", description: cliente.nome });
         }}
-        cnpjTaken={(cnpjDigits) => state.clientes.some((c) => c.cnpj === cnpjDigits)}
       />
     </AppLayout>
   );
@@ -472,7 +673,7 @@ function SaldoHint({
   arpsById,
 }: {
   tipoAdesao: TipoAdesao;
-  oportunidadeId: string;
+  oportunidadeId?: string;
   item: ArpItem;
   oportunidades: Oportunidade[];
   arpsById: Record<string, Arp>;

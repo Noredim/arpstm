@@ -60,7 +60,12 @@ type ArpStore = {
   deleteLote: (arpId: string, loteId: string) => void;
 
   addItem: (arpId: string, loteId: string, item: Omit<ArpItem, "id" | "loteId">) => ArpItem;
-  updateItem: (arpId: string, loteId: string, itemId: string, patch: Partial<Omit<ArpItem, "id" | "loteId">>) => void;
+  updateItem: (
+    arpId: string,
+    loteId: string,
+    itemId: string,
+    patch: Partial<Omit<ArpItem, "id" | "loteId">>,
+  ) => void;
   deleteItem: (arpId: string, loteId: string, itemId: string) => void;
 
   addEquipamento: (
@@ -81,9 +86,13 @@ type ArpStore = {
   // Oportunidades
   createOportunidade: (data: Omit<Oportunidade, "id" | "codigo" | "itens">) => Oportunidade;
   updateOportunidade: (id: string, patch: Partial<Omit<Oportunidade, "id" | "codigo" | "itens">>) => void;
+  setOportunidadeItens: (id: string, itens: OportunidadeItem[]) => void;
   deleteOportunidade: (id: string) => void;
 
-  addOportunidadeItem: (oportunidadeId: string, data: Omit<OportunidadeItem, "id" | "oportunidadeId">) => OportunidadeItem;
+  addOportunidadeItem: (
+    oportunidadeId: string,
+    data: Omit<OportunidadeItem, "id" | "oportunidadeId">,
+  ) => OportunidadeItem;
   updateOportunidadeItem: (
     oportunidadeId: string,
     itemId: string,
@@ -182,7 +191,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           arps: s.arps.map((a) =>
-            a.id === arpId ? { ...a, participantes: a.participantes.filter((id) => id !== clienteId) } : a,
+            a.id === arpId
+              ? { ...a, participantes: a.participantes.filter((id) => id !== clienteId) }
+              : a,
           ),
         }));
       },
@@ -191,7 +202,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         const lote: ArpLote = { id: uid("lote"), arpId, itens: [], ...data };
         setState((s) => ({
           ...s,
-          arps: s.arps.map((a) => (a.id === arpId ? { ...a, lotes: [...a.lotes, lote] } : a)),
+          arps: s.arps.map((a) =>
+            a.id === arpId ? { ...a, lotes: [...a.lotes, lote] } : a,
+          ),
         }));
         return lote;
       },
@@ -208,19 +221,28 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       deleteLote: (arpId, loteId) => {
         setState((s) => ({
           ...s,
-          arps: s.arps.map((a) => (a.id === arpId ? { ...a, lotes: a.lotes.filter((l) => l.id !== loteId) } : a)),
+          arps: s.arps.map((a) =>
+            a.id === arpId ? { ...a, lotes: a.lotes.filter((l) => l.id !== loteId) } : a,
+          ),
         }));
       },
 
       addItem: (arpId, loteId, item) => {
-        const newItem: ArpItem = { ...(item as any), id: uid("item"), loteId };
+        const newItem: ArpItem = {
+          ...(item as any),
+          id: uid("item"),
+          loteId,
+          equipamentos: (item as any).equipamentos ?? [],
+        };
         setState((s) => ({
           ...s,
           arps: s.arps.map((a) =>
             a.id === arpId
               ? {
                   ...a,
-                  lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens: [...l.itens, newItem] } : l)),
+                  lotes: a.lotes.map((l) =>
+                    l.id === loteId ? { ...l, itens: [...l.itens, newItem] } : l,
+                  ),
                 }
               : a,
           ),
@@ -240,10 +262,12 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                       ...l,
                       itens: l.itens.map((it) => {
                         if (it.id !== itemId) return it;
-                        const next = { ...it, ...(patch as any) } as ArpItem;
-                        // Normaliza equipamentos quando não se aplica
-                        if (next.kind !== "MANUTENCAO") return next;
-                        if (!("equipamentos" in next)) (next as any).equipamentos = [];
+                        const next = {
+                          ...it,
+                          ...(patch as any),
+                          equipamentos:
+                            (patch as any).equipamentos ?? (it as any).equipamentos ?? [],
+                        } as ArpItem;
                         return next;
                       }),
                     };
@@ -260,7 +284,11 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             a.id === arpId
               ? {
                   ...a,
-                  lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) } : l)),
+                  lotes: a.lotes.map((l) =>
+                    l.id === loteId
+                      ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) }
+                      : l,
+                  ),
                 }
               : a,
           ),
@@ -285,8 +313,8 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                   ...l,
                   itens: l.itens.map((it) => {
                     if (it.id !== arpItemId) return it;
-                    if (it.kind !== "MANUTENCAO") return it;
-                    return { ...it, equipamentos: [...it.equipamentos, eq] };
+                    const equipamentos = (it as any).equipamentos ?? [];
+                    return { ...(it as any), equipamentos: [...equipamentos, eq] };
                   }),
                 };
               }),
@@ -308,10 +336,12 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                   ...l,
                   itens: l.itens.map((it) => {
                     if (it.id !== arpItemId) return it;
-                    if (it.kind !== "MANUTENCAO") return it;
+                    const equipamentos = (it as any).equipamentos ?? [];
                     return {
-                      ...it,
-                      equipamentos: it.equipamentos.map((e) => (e.id === equipamentoId ? { ...e, ...patch } : e)),
+                      ...(it as any),
+                      equipamentos: equipamentos.map((e: ArpItemEquipamento) =>
+                        e.id === equipamentoId ? { ...e, ...patch } : e,
+                      ),
                     };
                   }),
                 };
@@ -333,8 +363,11 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                   ...l,
                   itens: l.itens.map((it) => {
                     if (it.id !== arpItemId) return it;
-                    if (it.kind !== "MANUTENCAO") return it;
-                    return { ...it, equipamentos: it.equipamentos.filter((e) => e.id !== equipamentoId) };
+                    const equipamentos = (it as any).equipamentos ?? [];
+                    return {
+                      ...(it as any),
+                      equipamentos: equipamentos.filter((e: ArpItemEquipamento) => e.id !== equipamentoId),
+                    };
                   }),
                 };
               }),
@@ -363,6 +396,12 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, ...patch } : o)),
         }));
       },
+      setOportunidadeItens: (id, itens) => {
+        setState((s) => ({
+          ...s,
+          oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
+        }));
+      },
       deleteOportunidade: (id) => {
         setState((s) => ({
           ...s,
@@ -374,7 +413,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         const oi: OportunidadeItem = { id: uid("oppi"), oportunidadeId, ...data };
         setState((s) => ({
           ...s,
-          oportunidades: s.oportunidades.map((o) => (o.id === oportunidadeId ? { ...o, itens: [...o.itens, oi] } : o)),
+          oportunidades: s.oportunidades.map((o) =>
+            o.id === oportunidadeId ? { ...o, itens: [...o.itens, oi] } : o,
+          ),
         }));
         return oi;
       },

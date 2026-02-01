@@ -1,6 +1,10 @@
 export type Esfera = "MUNICIPAL" | "ESTADUAL" | "FEDERAL";
 export type ArpStatus = "VIGENTE" | "ENCERRADA";
-export type TipoFornecimento = "FORNECIMENTO" | "INSTALACAO" | "MANUTENCAO";
+export type TipoFornecimento =
+  | "FORNECIMENTO"
+  | "INSTALACAO"
+  | "MANUTENCAO"
+  | "COMODATO";
 export type TipoItemManutencao = "PRODUTO" | "SERVICO";
 export type TipoAdesao = "PARTICIPANTE" | "CARONA";
 
@@ -18,21 +22,23 @@ export type ArpItemEquipamento = {
   nomeEquipamento: string;
   quantidade: number;
   custoUnitario: number;
-  fornecedor: string;
-  fabricante: string;
+  fornecedor?: string;
+  fabricante?: string;
 };
 
 export type ArpItemBase = {
   id: string;
   loteId: string;
   numeroItem: string;
-  descricao: string;
+  descricaoInterna: string; // novo campo (principal)
+  descricao: string; // descrição "oficial"
   unidade: string;
   total: number;
+  equipamentos: ArpItemEquipamento[];
 };
 
 export type ArpItemFornecimento = ArpItemBase & {
-  kind: "FORNECIMENTO" | "INSTALACAO";
+  kind: "FORNECIMENTO" | "INSTALACAO" | "COMODATO";
   valorUnitario: number;
 };
 
@@ -40,7 +46,6 @@ export type ArpItemManutencao = ArpItemBase & {
   kind: "MANUTENCAO";
   tipoItem: TipoItemManutencao;
   valorUnitarioMensal: number;
-  equipamentos: ArpItemEquipamento[];
 };
 
 export type ArpItem = ArpItemFornecimento | ArpItemManutencao;
@@ -58,8 +63,8 @@ export type Arp = {
   nomeAta: string;
   clienteId: string;
   isConsorcio: boolean;
-  dataAssinatura?: string; // ISO yyyy-mm-dd
-  dataVencimento?: string; // ISO yyyy-mm-dd
+  dataAssinatura: string; // ISO yyyy-mm-dd (required)
+  dataVencimento: string; // ISO yyyy-mm-dd (required)
   participantes: string[]; // clienteId
   lotes: ArpLote[];
 };

@@ -39,7 +39,8 @@ export function todayIso() {
 }
 
 export function getArpStatus(arp: Arp): ArpStatus {
-  if (!arp.dataVencimento) return "VIGENTE";
+  // tolera dados antigos (migração) com vencimento vazio
+  if (!(arp as any).dataVencimento) return "VIGENTE";
   return arp.dataVencimento >= todayIso() ? "VIGENTE" : "ENCERRADA";
 }
 

@@ -60,6 +60,7 @@ const TIPOS_FORNECIMENTO: { value: TipoFornecimento; label: string; icon: React.
   { value: "FORNECIMENTO", label: "Fornecimento", icon: Package },
   { value: "INSTALACAO", label: "Instalação", icon: HardHat },
   { value: "MANUTENCAO", label: "Manutenção", icon: CalendarClock },
+  { value: "COMODATO", label: "Comodato", icon: Boxes },
 ];
 
 function tipoLabel(t: TipoFornecimento) {
@@ -86,7 +87,10 @@ export default function AtaDetalhePage() {
   } = useArpStore();
 
   const arp = state.arps.find((a) => a.id === id);
-  const clientesById = React.useMemo(() => Object.fromEntries(state.clientes.map((c) => [c.id, c])), [state.clientes]);
+  const clientesById = React.useMemo(
+    () => Object.fromEntries(state.clientes.map((c) => [c.id, c])),
+    [state.clientes],
+  );
 
   const [openEdit, setOpenEdit] = React.useState(false);
   const [openLote, setOpenLote] = React.useState(false);
@@ -131,7 +135,9 @@ export default function AtaDetalhePage() {
 
   function submitItem(lote: ArpLote, item: Partial<ArpItem>) {
     if (!item.numeroItem?.trim()) return toast({ title: "Informe o número do item", variant: "destructive" });
-    if (!item.descricao?.trim()) return toast({ title: "Informe a descrição", variant: "destructive" });
+    if (!item.descricaoInterna?.trim())
+      return toast({ title: "Informe a descrição interna", variant: "destructive" });
+    if (!item.descricao?.trim()) return toast({ title: "Informe a descrição oficial", variant: "destructive" });
     if (!item.unidade?.trim()) return toast({ title: "Informe a unidade", variant: "destructive" });
     if ((item.total ?? 0) <= 0) return toast({ title: "Total deve ser maior que zero", variant: "destructive" });
 
@@ -139,7 +145,8 @@ export default function AtaDetalhePage() {
       const tipoItem = (item as any).tipoItem as TipoItemManutencao | undefined;
       const vum = Number((item as any).valorUnitarioMensal ?? 0);
       if (!tipoItem) return toast({ title: "Selecione o tipo do item", variant: "destructive" });
-      if (vum <= 0) return toast({ title: "Valor unitário mensal deve ser maior que zero", variant: "destructive" });
+      if (vum <= 0)
+        return toast({ title: "Valor unitário mensal deve ser maior que zero", variant: "destructive" });
     } else {
       const vu = Number((item as any).valorUnitario ?? 0);
       if (vu <= 0) return toast({ title: "Valor unitário deve ser maior que zero", variant: "destructive" });
@@ -149,11 +156,12 @@ export default function AtaDetalhePage() {
       updateItem(arp.id, lote.id, ctxItem.item.id, item as any);
       toast({ title: "Item atualizado" });
     } else {
-      const payload: Omit<ArpItem, "id" | "loteId"> =
+      const payload =
         lote.tipoFornecimento === "MANUTENCAO"
           ? {
               kind: "MANUTENCAO",
               numeroItem: item.numeroItem!,
+              descricaoInterna: item.descricaoInterna!,
               descricao: item.descricao!,
               unidade: item.unidade!,
               total: Number(item.total),
@@ -164,12 +172,14 @@ export default function AtaDetalhePage() {
           : {
               kind: lote.tipoFornecimento,
               numeroItem: item.numeroItem!,
+              descricaoInterna: item.descricaoInterna!,
               descricao: item.descricao!,
               unidade: item.unidade!,
               total: Number(item.total),
               valorUnitario: Number((item as any).valorUnitario),
+              equipamentos: [],
             };
-      addItem(arp.id, lote.id, payload);
+      addItem(arp.id, lote.id, payload as any);
       toast({ title: "Item criado" });
     }
 
@@ -186,7 +196,9 @@ export default function AtaDetalhePage() {
                 <div className="truncate text-lg font-semibold tracking-tight">{arp.nomeAta}</div>
                 <Badge
                   className={
-                    status === "VIGENTE" ? "rounded-full bg-emerald-600 text-white" : "rounded-full bg-rose-600 text-white"
+                    status === "VIGENTE"
+                      ? "rounded-full bg-emerald-600 text-white"
+                      : "rounded-full bg-rose-600 text-white"
                   }
                 >
                   {status}
@@ -198,7 +210,8 @@ export default function AtaDetalhePage() {
                 )}
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
-                Titular: <span className="font-medium text-foreground">{clientesById[arp.clienteId]?.nome ?? "—"}</span>
+                Titular:{" "}
+                <span className="font-medium text-foreground">{clientesById[arp.clienteId]?.nome ?? "—"}</span>
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -206,7 +219,7 @@ export default function AtaDetalhePage() {
                 <Pencil className="mr-2 size-4" />
                 Editar dados
               </Button>
-              <Button className="rounded-2xl" onClick={() => navigate("/oportunidades")}> 
+              <Button className="rounded-2xl" onClick={() => navigate("/oportunidades")}>
                 <ClipboardList className="mr-2 size-4" />
                 Ver oportunidades
               </Button>
@@ -216,9 +229,17 @@ export default function AtaDetalhePage() {
 
         <Tabs defaultValue="geral" className="w-full">
           <TabsList className="h-11 w-full justify-start rounded-2xl bg-muted/40 p-1">
-            <TabsTrigger value="geral" className="rounded-2xl">Dados gerais</TabsTrigger>
-            {arp.isConsorcio && <TabsTrigger value="participantes" className="rounded-2xl">Participantes</TabsTrigger>}
-            <TabsTrigger value="lotes" className="rounded-2xl">Lotes e itens</TabsTrigger>
+            <TabsTrigger value="geral" className="rounded-2xl">
+              Dados gerais
+            </TabsTrigger>
+            {arp.isConsorcio && (
+              <TabsTrigger value="participantes" className="rounded-2xl">
+                Participantes
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="lotes" className="rounded-2xl">
+              Lotes e itens
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="geral" className="mt-4">
@@ -284,7 +305,7 @@ export default function AtaDetalhePage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <div className="text-sm font-semibold tracking-tight">Estrutura da ATA</div>
-                <div className="text-sm text-muted-foreground">ATA → Lote → Itens → Equipamentos (quando aplicável)</div>
+                <div className="text-sm text-muted-foreground">ATA → Lote → Itens → Equipamentos</div>
               </div>
               <Button
                 className="rounded-2xl"
@@ -343,14 +364,15 @@ export default function AtaDetalhePage() {
         </Tabs>
       </div>
 
-      <ArpFormSheet open={openEdit} onOpenChange={setOpenEdit} initial={arp} clientes={state.clientes} onSubmit={submitArp} />
-
-      <LoteDialog
-        open={openLote}
-        onOpenChange={setOpenLote}
-        initial={editingLote}
-        onSubmit={submitLote}
+      <ArpFormSheet
+        open={openEdit}
+        onOpenChange={setOpenEdit}
+        initial={arp}
+        clientes={state.clientes}
+        onSubmit={submitArp}
       />
+
+      <LoteDialog open={openLote} onOpenChange={setOpenLote} initial={editingLote} onSubmit={submitLote} />
 
       <ItemDialog
         open={openItem}
@@ -394,9 +416,7 @@ function ParticipantesTab({
   const [clienteId, setClienteId] = React.useState("");
 
   const options = React.useMemo(() => {
-    return allClientes
-      .slice()
-      .sort((a, b) => a.nome.localeCompare(b.nome));
+    return allClientes.slice().sort((a, b) => a.nome.localeCompare(b.nome));
   }, [allClientes]);
 
   return (
@@ -605,8 +625,8 @@ function LoteCard({
               <TableHead className="w-[110px]">Nº</TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead className="w-[120px]">Total</TableHead>
-              <TableHead className="w-[190px]">Valores</TableHead>
-              <TableHead className="w-[140px] text-right">Ações</TableHead>
+              <TableHead className="w-[210px]">Valores</TableHead>
+              <TableHead className="w-[220px] text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -618,17 +638,22 @@ function LoteCard({
               </TableRow>
             ) : (
               lote.itens.map((it) => {
-                const totalLabel = it.kind === "MANUTENCAO" ? moneyBRL(itemValorTotalMensal(it)) + " /m" : moneyBRL(itemValorTotal(it));
+                const totalLabel =
+                  it.kind === "MANUTENCAO"
+                    ? moneyBRL(itemValorTotalMensal(it)) + " /m"
+                    : moneyBRL(itemValorTotal(it));
                 const subLabel =
                   it.kind === "MANUTENCAO"
-                    ? `Anual: ${moneyBRL(itemTotalAnual(it))}${it.tipoItem === "PRODUTO" ? " • Equip." : ""}`
+                    ? `Anual: ${moneyBRL(itemTotalAnual(it))}`
                     : `Unit.: ${moneyBRL((it as any).valorUnitario)}`;
+                const hasEquip = (it.equipamentos?.length ?? 0) > 0;
+
                 return (
                   <TableRow key={it.id} className="hover:bg-muted/30">
                     <TableCell className="font-medium tabular-nums">{it.numeroItem}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{it.descricao}</div>
-                      <div className="text-xs text-muted-foreground">Unidade: {it.unidade}</div>
+                      <div className="font-medium">{it.descricaoInterna}</div>
+                      <div className="text-xs text-muted-foreground">Oficial: {it.descricao}</div>
                     </TableCell>
                     <TableCell className="tabular-nums">{it.total}</TableCell>
                     <TableCell>
@@ -636,15 +661,18 @@ function LoteCard({
                       <div className="text-xs text-muted-foreground">{subLabel}</div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="inline-flex items-center gap-1">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" className="rounded-xl" onClick={() => onEditItem(it)}>
                           Editar
                         </Button>
-                        {lote.tipoFornecimento === "MANUTENCAO" && it.kind === "MANUTENCAO" && it.tipoItem === "PRODUTO" && (
-                          <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => onManageEquip(it)}>
-                            Equipamentos
-                          </Button>
-                        )}
+                        <Button
+                          variant={hasEquip ? "secondary" : "ghost"}
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => onManageEquip(it)}
+                        >
+                          Equipamentos{hasEquip ? ` (${it.equipamentos.length})` : ""}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -662,12 +690,6 @@ function LoteCard({
           </TableBody>
         </Table>
       </div>
-
-      {arp.isConsorcio === false && lote.tipoFornecimento === "MANUTENCAO" && (
-        <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-          Dica: itens de manutenção podem ter equipamentos quando o tipo do item for <span className="font-medium">PRODUTO</span>.
-        </div>
-      )}
     </Card>
   );
 }
@@ -688,10 +710,15 @@ function ItemDialog({
   initial?: ArpItem;
   onSubmit: (lote: ArpLote, item: Partial<ArpItem>) => void;
   onAddEquip: (arpItemId: string, data: Omit<ArpItemEquipamento, "id" | "arpItemId">) => void;
-  onUpdateEquip: (arpItemId: string, equipamentoId: string, patch: Partial<Omit<ArpItemEquipamento, "id" | "arpItemId">>) => void;
+  onUpdateEquip: (
+    arpItemId: string,
+    equipamentoId: string,
+    patch: Partial<Omit<ArpItemEquipamento, "id" | "arpItemId">>,
+  ) => void;
   onDeleteEquip: (arpItemId: string, equipamentoId: string) => void;
 }) {
   const [numeroItem, setNumeroItem] = React.useState("");
+  const [descricaoInterna, setDescricaoInterna] = React.useState("");
   const [descricao, setDescricao] = React.useState("");
   const [unidade, setUnidade] = React.useState("");
   const [total, setTotal] = React.useState<number>(1);
@@ -707,6 +734,7 @@ function ItemDialog({
   React.useEffect(() => {
     if (!open) return;
     setNumeroItem(initial?.numeroItem ?? "");
+    setDescricaoInterna((initial as any)?.descricaoInterna ?? "");
     setDescricao(initial?.descricao ?? "");
     setUnidade(initial?.unidade ?? "");
     setTotal(initial?.total ?? 1);
@@ -723,11 +751,11 @@ function ItemDialog({
   if (!lote) return null;
 
   const isManutencao = lote.tipoFornecimento === "MANUTENCAO";
-  const computedTotal = isManutencao ? round2(total * (valorUnitarioMensal || 0)) : round2(total * (valorUnitario || 0));
+  const computedTotal = isManutencao
+    ? round2(total * (valorUnitarioMensal || 0))
+    : round2(total * (valorUnitario || 0));
 
-  const showEquip = isManutencao && tipoItem === "PRODUTO";
-  const equipamentos: ArpItemEquipamento[] =
-    initial && initial.kind === "MANUTENCAO" ? initial.equipamentos : [];
+  const equipamentos: ArpItemEquipamento[] = (initial as any)?.equipamentos ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -736,10 +764,14 @@ function ItemDialog({
           <DialogTitle className="text-base tracking-tight">{initial ? "Editar item" : "Novo item"}</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue={showEquip ? "dados" : "dados"} className="w-full">
+        <Tabs defaultValue="dados" className="w-full">
           <TabsList className="h-10 w-full justify-start rounded-2xl bg-muted/40 p-1">
-            <TabsTrigger value="dados" className="rounded-2xl">Dados</TabsTrigger>
-            {showEquip && <TabsTrigger value="equip" className="rounded-2xl">Equipamentos</TabsTrigger>}
+            <TabsTrigger value="dados" className="rounded-2xl">
+              Dados
+            </TabsTrigger>
+            <TabsTrigger value="equip" className="rounded-2xl">
+              Equipamentos
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="dados" className="mt-4">
@@ -747,17 +779,40 @@ function ItemDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Número do item</Label>
-                  <Input value={numeroItem} onChange={(e) => setNumeroItem(e.target.value)} className="h-11 rounded-2xl" />
+                  <Input
+                    value={numeroItem}
+                    onChange={(e) => setNumeroItem(e.target.value)}
+                    className="h-11 rounded-2xl"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Unidade</Label>
-                  <Input value={unidade} onChange={(e) => setUnidade(e.target.value)} className="h-11 rounded-2xl" placeholder="Ex.: UN" />
+                  <Input
+                    value={unidade}
+                    onChange={(e) => setUnidade(e.target.value)}
+                    className="h-11 rounded-2xl"
+                    placeholder="Ex.: UN"
+                  />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Descrição</Label>
-                <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} className="min-h-[90px] rounded-2xl" />
+                <Label>Descrição interna (principal)</Label>
+                <Input
+                  value={descricaoInterna}
+                  onChange={(e) => setDescricaoInterna(e.target.value)}
+                  className="h-11 rounded-2xl"
+                  placeholder="Ex.: DCS - Dispositivo de Conexão Segura"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Descrição oficial</Label>
+                <Textarea
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  className="min-h-[90px] rounded-2xl"
+                />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
@@ -817,7 +872,10 @@ function ItemDialog({
                 <div>
                   <div className="text-xs text-muted-foreground">Total calculado</div>
                   <div className="text-sm font-semibold tabular-nums">
-                    {moneyBRL(computedTotal)} {isManutencao ? <span className="text-xs font-normal text-muted-foreground">/mês</span> : null}
+                    {moneyBRL(computedTotal)}{" "}
+                    {isManutencao ? (
+                      <span className="text-xs font-normal text-muted-foreground">/mês</span>
+                    ) : null}
                   </div>
                 </div>
                 {isManutencao && (
@@ -836,11 +894,13 @@ function ItemDialog({
                   onClick={() =>
                     onSubmit(lote, {
                       numeroItem,
+                      descricaoInterna,
                       descricao,
                       unidade,
                       total,
+                      equipamentos,
                       ...(isManutencao
-                        ? { kind: "MANUTENCAO", tipoItem, valorUnitarioMensal, equipamentos }
+                        ? { kind: "MANUTENCAO", tipoItem, valorUnitarioMensal }
                         : { kind: lote.tipoFornecimento, valorUnitario }),
                     } as any)
                   }
@@ -851,99 +911,105 @@ function ItemDialog({
             </div>
           </TabsContent>
 
-          {showEquip && initial && initial.kind === "MANUTENCAO" && (
-            <TabsContent value="equip" className="mt-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-semibold tracking-tight">Equipamentos do item</div>
-                  <div className="text-sm text-muted-foreground">Permitido apenas para manutenção + produto.</div>
-                </div>
-                <Button
-                  className="rounded-2xl"
-                  onClick={() => {
-                    setEquipEditing(undefined);
-                    setEquipOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 size-4" />
-                  Adicionar equipamento
-                </Button>
+          <TabsContent value="equip" className="mt-4">
+            {!initial ? (
+              <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                Salve o item primeiro para cadastrar equipamentos.
               </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold tracking-tight">Equipamentos do item</div>
+                    <div className="text-sm text-muted-foreground">Disponível para qualquer tipo de lote.</div>
+                  </div>
+                  <Button
+                    className="rounded-2xl"
+                    onClick={() => {
+                      setEquipEditing(undefined);
+                      setEquipOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Adicionar equipamento
+                  </Button>
+                </div>
 
-              <div className="mt-4 overflow-hidden rounded-2xl border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead>Equipamento</TableHead>
-                      <TableHead className="w-[120px]">Qtd</TableHead>
-                      <TableHead className="w-[170px]">Custo unit.</TableHead>
-                      <TableHead>Fornecedor</TableHead>
-                      <TableHead>Fabricante</TableHead>
-                      <TableHead className="w-[140px] text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {initial.equipamentos.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                          Nenhum equipamento cadastrado.
-                        </TableCell>
+                <div className="mt-4 overflow-hidden rounded-2xl border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead>Equipamento</TableHead>
+                        <TableHead className="w-[120px]">Qtd</TableHead>
+                        <TableHead className="w-[170px]">Custo unit.</TableHead>
+                        <TableHead>Fornecedor</TableHead>
+                        <TableHead>Fabricante</TableHead>
+                        <TableHead className="w-[140px] text-right">Ações</TableHead>
                       </TableRow>
-                    ) : (
-                      initial.equipamentos.map((e) => (
-                        <TableRow key={e.id} className="hover:bg-muted/30">
-                          <TableCell className="font-medium">{e.nomeEquipamento}</TableCell>
-                          <TableCell className="tabular-nums">{e.quantidade}</TableCell>
-                          <TableCell className="tabular-nums">{moneyBRL(e.custoUnitario)}</TableCell>
-                          <TableCell>{e.fornecedor}</TableCell>
-                          <TableCell>{e.fabricante}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="inline-flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="rounded-xl"
-                                onClick={() => {
-                                  setEquipEditing(e);
-                                  setEquipOpen(true);
-                                }}
-                              >
-                                <Pencil className="size-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="rounded-xl text-destructive hover:text-destructive"
-                                onClick={() => onDeleteEquip(initial.id, e.id)}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {equipamentos.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                            Nenhum equipamento cadastrado.
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      ) : (
+                        equipamentos.map((e) => (
+                          <TableRow key={e.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium">{e.nomeEquipamento}</TableCell>
+                            <TableCell className="tabular-nums">{e.quantidade}</TableCell>
+                            <TableCell className="tabular-nums">{moneyBRL(e.custoUnitario)}</TableCell>
+                            <TableCell>{e.fornecedor || "—"}</TableCell>
+                            <TableCell>{e.fabricante || "—"}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="inline-flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="rounded-xl"
+                                  onClick={() => {
+                                    setEquipEditing(e);
+                                    setEquipOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="rounded-xl text-destructive hover:text-destructive"
+                                  onClick={() => onDeleteEquip(initial.id, e.id)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
-              <EquipamentoDialog
-                open={equipOpen}
-                onOpenChange={setEquipOpen}
-                initial={equipEditing}
-                onSubmit={(data) => {
-                  if (!initial) return;
-                  if (equipEditing) {
-                    onUpdateEquip(initial.id, equipEditing.id, data);
-                    toast({ title: "Equipamento atualizado" });
-                  } else {
-                    onAddEquip(initial.id, data);
-                  }
-                  setEquipOpen(false);
-                }}
-              />
-            </TabsContent>
-          )}
+                <EquipamentoDialog
+                  open={equipOpen}
+                  onOpenChange={setEquipOpen}
+                  initial={equipEditing}
+                  onSubmit={(data) => {
+                    if (!initial) return;
+                    if (equipEditing) {
+                      onUpdateEquip(initial.id, equipEditing.id, data);
+                      toast({ title: "Equipamento atualizado" });
+                    } else {
+                      onAddEquip(initial.id, data);
+                    }
+                    setEquipOpen(false);
+                  }}
+                />
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -982,12 +1048,13 @@ function EquipamentoDialog({
     if (!nomeEquipamento.trim()) return setError("Informe o nome do equipamento.");
     if (quantidade <= 0) return setError("Quantidade deve ser maior que zero.");
     if (custoUnitario < 0) return setError("Custo unitário inválido.");
+
     onSubmit({
       nomeEquipamento: nomeEquipamento.trim(),
       quantidade: Number(quantidade),
       custoUnitario: Number(custoUnitario),
-      fornecedor: fornecedor.trim(),
-      fabricante: fabricante.trim(),
+      fornecedor: fornecedor.trim() || undefined,
+      fabricante: fabricante.trim() || undefined,
     });
   }
 
@@ -1007,21 +1074,34 @@ function EquipamentoDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Quantidade</Label>
-              <Input value={quantidade} onChange={(e) => setQuantidade(Number(e.target.value || 0))} type="number" min={0} className="h-11 rounded-2xl" />
+              <Input
+                value={quantidade}
+                onChange={(e) => setQuantidade(Number(e.target.value || 0))}
+                type="number"
+                min={0}
+                className="h-11 rounded-2xl"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Custo unitário</Label>
-              <Input value={custoUnitario} onChange={(e) => setCustoUnitario(Number(e.target.value || 0))} type="number" min={0} step={0.01} className="h-11 rounded-2xl" />
+              <Input
+                value={custoUnitario}
+                onChange={(e) => setCustoUnitario(Number(e.target.value || 0))}
+                type="number"
+                min={0}
+                step={0.01}
+                className="h-11 rounded-2xl"
+              />
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Fornecedor</Label>
+              <Label>Fornecedor (opcional)</Label>
               <Input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className="h-11 rounded-2xl" />
             </div>
             <div className="space-y-1.5">
-              <Label>Fabricante</Label>
+              <Label>Fabricante (opcional)</Label>
               <Input value={fabricante} onChange={(e) => setFabricante(e.target.value)} className="h-11 rounded-2xl" />
             </div>
           </div>

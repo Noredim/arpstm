@@ -29,7 +29,7 @@ import { useArpStore } from "@/store/arp-store";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 
 export default function OportunidadesPage() {
-  const { state, createOportunidade, deleteOportunidade } = useArpStore();
+  const { state, deleteOportunidade } = useArpStore();
   const navigate = useNavigate();
   const [q, setQ] = React.useState("");
 
@@ -37,8 +37,14 @@ export default function OportunidadesPage() {
   const [clienteId, setClienteId] = React.useState("");
   const [arpId, setArpId] = React.useState("");
 
-  const clientesById = React.useMemo(() => Object.fromEntries(state.clientes.map((c) => [c.id, c])), [state.clientes]);
-  const arpsById = React.useMemo(() => Object.fromEntries(state.arps.map((a) => [a.id, a])), [state.arps]);
+  const clientesById = React.useMemo(
+    () => Object.fromEntries(state.clientes.map((c) => [c.id, c])),
+    [state.clientes],
+  );
+  const arpsById = React.useMemo(
+    () => Object.fromEntries(state.arps.map((a) => [a.id, a])),
+    [state.arps],
+  );
 
   const vigentes = React.useMemo(() => state.arps.filter(isArpVigente), [state.arps]);
 
@@ -70,13 +76,11 @@ export default function OportunidadesPage() {
     setOpen(true);
   }
 
-  function create() {
+  function goToDraft() {
     if (!clienteId) return;
     if (!arpId) return;
-    const opp = createOportunidade({ clienteId, arpId });
-    toast({ title: "Oportunidade criada", description: `Código ${opp.codigo}` });
     setOpen(false);
-    navigate(`/oportunidades/${opp.id}`);
+    navigate(`/oportunidades/nova?clienteId=${encodeURIComponent(clienteId)}&arpId=${encodeURIComponent(arpId)}`);
   }
 
   function remove(o: Oportunidade) {
@@ -197,7 +201,7 @@ export default function OportunidadesPage() {
         arpId={arpId}
         onClienteId={setClienteId}
         onArpId={setArpId}
-        onCreate={create}
+        onCreate={goToDraft}
       />
     </AppLayout>
   );
@@ -269,7 +273,7 @@ function CreateOportunidadeDialog({
               Cancelar
             </Button>
             <Button className="rounded-2xl" onClick={onCreate}>
-              Criar
+              Continuar
             </Button>
           </div>
         </div>
