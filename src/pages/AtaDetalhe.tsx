@@ -97,7 +97,8 @@ export default function AtaDetalhePage() {
   const [editingLote, setEditingLote] = React.useState<ArpLote | undefined>(undefined);
 
   const [openItem, setOpenItem] = React.useState(false);
-  const [ctxItem, setCtxItem] = React.useState<{ lote: ArpLote; item?: ArpItem } | null>(null);
+  // IMPORTANT: guardar apenas IDs; o objeto do item pode ficar stale e não re-renderizar a grid.
+  const [ctxItem, setCtxItem] = React.useState<{ loteId: string; itemId?: string } | null>(null);
 
   if (!arp) {
     return (
@@ -114,6 +115,16 @@ export default function AtaDetalhePage() {
       </AppLayout>
     );
   }
+
+  const ctxLote = React.useMemo(() => {
+    if (!ctxItem) return null;
+    return arp.lotes.find((l) => l.id === ctxItem.loteId) ?? null;
+  }, [arp.lotes, ctxItem]);
+
+  const ctxInitial = React.useMemo(() => {
+    if (!ctxItem?.itemId) return undefined;
+    return ctxLote?.itens.find((it) => it.id === ctxItem.itemId);
+  }, [ctxItem?.itemId, ctxLote]);
 
   const status = getArpStatus(arp);
 
@@ -152,8 +163,8 @@ export default function AtaDetalhePage() {
       if (vu <= 0) return toast({ title: "Valor unitário deve ser maior que zero", variant: "destructive" });
     }
 
-    if (ctxItem?.item) {
-      updateItem(arp.id, lote.id, ctxItem.item.id, item as any);
+    if (ctxItem?.itemId) {
+      updateItem(arp.id, lote.id, ctxItem.itemId, item as any);
       toast({ title: "Item atualizado" });
     } else {
       const payload =
@@ -340,11 +351,11 @@ export default function AtaDetalhePage() {
                       toast({ title: "Lote removido" });
                     }}
                     onAddItem={() => {
-                      setCtxItem({ lote });
+                      setCtxItem({ loteId: lote.id });
                       setOpenItem(true);
                     }}
                     onEditItem={(item) => {
-                      setCtxItem({ lote, item });
+                      setCtxItem({ loteId: lote.id, itemId: item.id });
                       setOpenItem(true);
                     }}
                     onDeleteItem={(item) => {
@@ -353,7 +364,7 @@ export default function AtaDetalhePage() {
                       toast({ title: "Item removido" });
                     }}
                     onManageEquip={(item) => {
-                      setCtxItem({ lote, item });
+                      setCtxItem({ loteId: lote.id, itemId: item.id });
                       setOpenItem(true);
                     }}
                   />
@@ -377,22 +388,22 @@ export default function AtaDetalhePage() {
       <ItemDialog
         open={openItem}
         onOpenChange={setOpenItem}
-        lote={ctxItem?.lote ?? null}
-        initial={ctxItem?.item}
+        lote={ctxLote}
+        initial={ctxInitial}
         onSubmit={submitItem}
         onAddEquip={(arpItemId, data) => {
-          if (!ctxItem?.lote) return;
-          addEquipamento(arp.id, ctxItem.lote.id, arpItemId, data);
+          if (!ctxLote) return;
+          addEquipamento(arp.id, ctxLote.id, arpItemId, data);
           toast({ title: "Equipamento adicionado" });
         }}
         onUpdateEquip={(arpItemId, equipamentoId, patch) => {
-          if (!ctxItem?.lote) return;
-          updateEquipamento(arp.id, ctxItem.lote.id, arpItemId, equipamentoId, patch);
+          if (!ctxLote) return;
+          updateEquipamento(arp.id, ctxLote.id, arpItemId, equipamentoId, patch);
         }}
         onDeleteEquip={(arpItemId, equipamentoId) => {
-          if (!ctxItem?.lote) return;
+          if (!ctxLote) return;
           if (!confirm("Remover este equipamento?")) return;
-          deleteEquipamento(arp.id, ctxItem.lote.id, arpItemId, equipamentoId);
+          deleteEquipamento(arp.id, ctxLote.id, arpItemId, equipamentoId);
           toast({ title: "Equipamento removido" });
         }}
       />
