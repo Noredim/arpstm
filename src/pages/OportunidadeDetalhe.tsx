@@ -566,7 +566,13 @@ export default function OportunidadeDetalhePage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {(lote?.itens ?? []).map((it) => {
-                                  const label = `${it.numeroItem} - ${it.descricaoInterna}`;
+                                  // Nesta tela queremos só: "número + nome comercial".
+                                  // Consideramos "nome comercial" como a 1ª parte da descrição interna
+                                  // (ex.: "DCS - Dispositivo ..." => "DCS").
+                                  const nomeComercial = (it.descricaoInterna || "")
+                                    .split(/\s[-–—]\s/)[0]
+                                    ?.trim();
+                                  const label = `${it.numeroItem} - ${nomeComercial || it.descricaoInterna}`;
                                   return (
                                     <SelectItem key={it.id} value={it.id}>
                                       {label}
@@ -596,7 +602,7 @@ export default function OportunidadeDetalhePage() {
                               ? item.kind === "MANUTENCAO"
                                 ? `${moneyBRL(unitRef)} /mês`
                                 : moneyBRL(unitRef)
-                              : "—"}
+                              : "—" }
                           </TableCell>
 
                           <TableCell className="tabular-nums">{totalLabel}</TableCell>
