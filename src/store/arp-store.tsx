@@ -173,6 +173,9 @@ type ArpStore = {
   updateLote: (arpId: string, loteId: string, patch: Partial<Omit<ArpLote, "id" | "arpId" | "itens">>) => void;
   deleteLote: (arpId: string, loteId: string) => void;
 
+  // Itens (batch)
+  setLoteItens: (arpId: string, loteId: string, itens: ArpItem[]) => void;
+
   addItem: (arpId: string, loteId: string, item: Omit<ArpItem, "id" | "loteId">) => ArpItem;
   updateItem: (
     arpId: string,
@@ -522,6 +525,59 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             a.id === arpId ? { ...a, lotes: a.lotes.filter((l) => l.id !== loteId) } : a,
           ),
         }));
+      },
+
+      setLoteItens: (arpId, loteId, itens) => {
+        setState((s) => {
+          const arp = s.arps.find((a) => a.id === arpId);
+          const lote = arp?.lotes.find((l) => l.id === loteId);
+          const prevIds = new Set((lote?.itens ?? []).map((it) => it.id));
+          const nextIds = new Set((itens ?? []).map((it) => it.id));
+          const removedIds = [...prevIds].filter((id) => !nextIds.has(id));
+
+          const nextKitItems = s.kitItems.filter((ki) => !removedIds.includes(ki.arpItemId));
+
+          // recompute kitItens para todas oportunidades com base no novo kitItems
+          function recomputeKitItens(oportunidadeId: string, kits: OportunidadeKit[]) {
+            const byKitId: Record<string, KitItem[]> = {};
+            for (const ki of nextKitItems) (byKitId[ki.kitId] ??= []).push(ki);
+            const kitItens: OportunidadeKitItem[] = [];
+            for (const ok of kits) {
+              const items = byKitId[ok.kitId] ?? [];
+              for (const ki of items) {
+                kitItens.push({
+                  id: `${ok.id}:${ki.id}`,
+                  oportunidadeId,
+                  oportunidadeKitId: ok.id,
+                  loteId: ki.loteId,
+                  arpItemId: ki.arpItemId,
+                  quantidadeTotal: (Number(ki.quantidade) || 0) * (Number(ok.quantidadeKits) || 0),
+                });
+              }
+            }
+            return kitItens;
+          }
+
+          const oportunidades = s.oportunidades.map((o) => {
+            const nextItensAvulsos = (o.itens ?? []).filter((oi) => !removedIds.includes(oi.arpItemId));
+            const kits = o.kits ?? [];
+            const kitItens = recomputeKitItens(o.id, kits);
+            return { ...o, itens: nextItensAvulsos, kitItens };
+          });
+
+          return {
+            ...s,
+            arps: s.arps.map((a) => {
+              if (a.id !== arpId) return a;
+              return {
+                ...a,
+                lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens } : l)),
+              };
+            }),
+            kitItems: nextKitItems,
+            oportunidades,
+          };
+        });
       },
 
       addItem: (arpId, loteId, item) => {

@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
 import { ArpFormSheet } from "@/components/atas/ArpFormSheet";
+import { ImportItensCsvDialog } from "@/components/atas/ImportItensCsvDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -83,6 +84,7 @@ export default function AtaDetalhePage() {
     addItem,
     updateItem,
     deleteItem,
+    setLoteItens,
     addEquipamento,
     updateEquipamento,
     deleteEquipamento,
@@ -534,7 +536,15 @@ export default function AtaDetalhePage() {
         onSubmit={submitArp}
       />
 
-      <LoteDialog open={openLote} onOpenChange={setOpenLote} initial={editingLote} onSubmit={submitLote} />
+      <LoteDialog
+        arpId={arp.id}
+        open={openLote}
+        onOpenChange={setOpenLote}
+        initial={editingLote}
+        loteLive={editingLote ? arp.lotes.find((l) => l.id === editingLote.id) : undefined}
+        onSubmit={submitLote}
+        onSetItens={(loteId, itens) => setLoteItens(arp.id, loteId, itens)}
+      />
 
       <ItemDialog
         open={openItem}
@@ -693,19 +703,26 @@ function ParticipantesTab({
 }
 
 function LoteDialog({
+  arpId,
   open,
   onOpenChange,
   initial,
+  loteLive,
   onSubmit,
+  onSetItens,
 }: {
+  arpId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: ArpLote;
+  loteLive?: ArpLote;
   onSubmit: (data: { nomeLote: string; tipoFornecimento: TipoFornecimento }) => void;
+  onSetItens: (loteId: string, itens: ArpItem[]) => void;
 }) {
   const [nomeLote, setNomeLote] = React.useState("");
   const [tipoFornecimento, setTipo] = React.useState<TipoFornecimento>("FORNECIMENTO");
   const [error, setError] = React.useState<string | null>(null);
+  const [openCsv, setOpenCsv] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -721,12 +738,12 @@ function LoteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl rounded-3xl">
+      <DialogContent className="max-w-5xl rounded-3xl">
         <DialogHeader>
           <DialogTitle className="text-base tracking-tight">{initial ? "Editar lote" : "Novo lote"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4">
+        <div className="grid gap-5">
           <div className="space-y-1.5">
             <Label>Nome do lote</Label>
             <Input value={nomeLote} onChange={(e) => setNomeLote(e.target.value)} className="h-11 rounded-2xl" />
@@ -747,6 +764,99 @@ function LoteDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {initial && loteLive && (
+            <Card className="rounded-3xl border p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold tracking-tight">Itens do Lote</div>
+                  <div className="text-sm text-muted-foreground">
+                    Importação em massa via CSV (não abre nova janela).
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="rounded-full">
+                    {loteLive.itens.length} item(ns)
+                  </Badge>
+                  <Button
+                    variant="secondary"
+                    className="rounded-2xl"
+                    onClick={() => setOpenCsv(true)}
+                    disabled={tipoFornecimento === "MANUTENCAO"}
+                  >
+                    <Upload className="mr-2 size-4" />
+                    Importar CSV
+                  </Button>
+                </div>
+              </div>
+
+              {tipoFornecimento === "MANUTENCAO" && (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Importação por CSV não está habilitada para <span className="font-semibold">Manutenção</span>
+                  (mensal). Use o cadastro manual dos itens.
+                </div>
+              )}
+
+              <div className="mt-4 overflow-hidden rounded-2xl border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="w-[120px]">Item</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead className="w-[120px]">Unid</TableHead>
+                      <TableHead className="w-[140px]">Total</TableHead>
+                      <TableHead className="w-[180px]">Valor unit.</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loteLive.itens.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                          Sem itens ainda. Use "Importar CSV" ou cadastre manualmente.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      loteLive.itens
+                        .slice()
+                        .sort((a, b) => String(a.numeroItem).localeCompare(String(b.numeroItem)))
+                        .slice(0, 10)
+                        .map((it) => (
+                          <TableRow key={it.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium tabular-nums">{it.numeroItem}</TableCell>
+                            <TableCell>
+                              <div className="font-medium">{(it as any).nomeComercial ?? it.descricaoInterna}</div>
+                              <div className="text-xs text-muted-foreground line-clamp-1">{it.descricao}</div>
+                            </TableCell>
+                            <TableCell className="text-sm">{it.unidade}</TableCell>
+                            <TableCell className="tabular-nums">{it.total}</TableCell>
+                            <TableCell className="tabular-nums">
+                              {it.kind === "MANUTENCAO" ? "—" : moneyBRL((it as any).valorUnitario)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {loteLive.itens.length > 10 && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Prévia mostra as primeiras 10 linhas. Após importar, o lote exibirá todos os itens.
+                </div>
+              )}
+
+              <ImportItensCsvDialog
+                open={openCsv}
+                onOpenChange={setOpenCsv}
+                loteId={loteLive.id}
+                loteTipo={tipoFornecimento}
+                existingItems={loteLive.itens}
+                onApply={(nextItems) => {
+                  onSetItens(loteLive.id, nextItems);
+                }}
+              />
+            </Card>
+          )}
 
           {error && (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
