@@ -6,6 +6,8 @@ import type {
   ArpStatus,
   Cliente,
   Oportunidade,
+  OportunidadeKit,
+  OportunidadeKitItem,
   TipoAdesao,
 } from "@/lib/arp-types";
 
@@ -100,14 +102,43 @@ export function consumoPorTipo(params: {
   arpItemId: string;
   tipo: TipoAdesao;
   excludeOportunidadeId?: string;
+  oportunidadeKits?: OportunidadeKit[];
+  oportunidadeKitItems?: OportunidadeKitItem[];
 }) {
-  const { oportunidades, arpsById, arpItemId, tipo, excludeOportunidadeId } = params;
-  return oportunidades
+  const {
+    oportunidades,
+    arpsById,
+    arpItemId,
+    tipo,
+    excludeOportunidadeId,
+    oportunidadeKits,
+    oportunidadeKitItems,
+  } = params;
+
+  const opps = oportunidades
     .filter((o) => (excludeOportunidadeId ? o.id !== excludeOportunidadeId : true))
-    .filter((o) => getTipoAdesao(arpsById[o.arpId], o.clienteId) === tipo)
+    .filter((o) => getTipoAdesao(arpsById[o.arpId], o.clienteId) === tipo);
+
+  const oppIds = new Set(opps.map((o) => o.id));
+
+  const avulsos = opps
     .flatMap((o) => o.itens)
     .filter((i) => i.arpItemId === arpItemId)
     .reduce((sum, i) => sum + (Number(i.quantidade) || 0), 0);
+
+  if (!oportunidadeKits || !oportunidadeKitItems) return avulsos;
+
+  const okById = Object.fromEntries(oportunidadeKits.map((k) => [k.id, k] as const)) as Record<
+    string,
+    OportunidadeKit
+  >;
+
+  const fromKits = oportunidadeKitItems
+    .filter((ki) => okById[ki.oportunidadeKitId] && oppIds.has(okById[ki.oportunidadeKitId].oportunidadeId))
+    .filter((ki) => ki.arpItemId === arpItemId)
+    .reduce((sum, ki) => sum + (Number(ki.quantidadeTotal) || 0), 0);
+
+  return avulsos + fromKits;
 }
 
 export function max0(v: number) {

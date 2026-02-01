@@ -8,8 +8,12 @@ import type {
   Cliente,
   Estado,
   InteracaoOportunidade,
+  Kit,
+  KitItem,
   Oportunidade,
   OportunidadeItem,
+  OportunidadeKit,
+  OportunidadeKitItem,
   Parceiro,
 } from "@/lib/arp-types";
 import { addDaysIso, digitsOnly, todayIso, uid } from "@/lib/arp-utils";
@@ -22,10 +26,16 @@ type ArpState = {
   // Comercial
   parceiros: Parceiro[];
 
+  // Kits
+  kits: Kit[];
+  kitItems: KitItem[];
+
   // ARP
   clientes: Cliente[];
   arps: Arp[];
   oportunidades: Oportunidade[];
+  oportunidadeKits: OportunidadeKit[];
+  oportunidadeKitItems: OportunidadeKitItem[];
   interacoesOportunidade: InteracaoOportunidade[];
   oportunidadeSeq: number;
 };
@@ -40,9 +50,13 @@ function loadInitial(): ArpState {
         estados: [],
         cidades: [],
         parceiros: [],
+        kits: [],
+        kitItems: [],
         clientes: [],
         arps: [],
         oportunidades: [],
+        oportunidadeKits: [],
+        oportunidadeKitItems: [],
         interacoesOportunidade: [],
         oportunidadeSeq: 0,
       };
@@ -66,9 +80,13 @@ function loadInitial(): ArpState {
       estados: parsed.estados ?? [],
       cidades: parsed.cidades ?? [],
       parceiros: parsed.parceiros ?? [],
+      kits: parsed.kits ?? [],
+      kitItems: parsed.kitItems ?? [],
       clientes: parsed.clientes ?? [],
       arps: parsed.arps ?? [],
       oportunidades,
+      oportunidadeKits: parsed.oportunidadeKits ?? [],
+      oportunidadeKitItems: parsed.oportunidadeKitItems ?? [],
       interacoesOportunidade: parsed.interacoesOportunidade ?? [],
       oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
     };
@@ -77,9 +95,13 @@ function loadInitial(): ArpState {
       estados: [],
       cidades: [],
       parceiros: [],
+      kits: [],
+      kitItems: [],
       clientes: [],
       arps: [],
       oportunidades: [],
+      oportunidadeKits: [],
+      oportunidadeKitItems: [],
       interacoesOportunidade: [],
       oportunidadeSeq: 0,
     };
@@ -107,6 +129,12 @@ type ArpStore = {
   createParceiro: (data: Omit<Parceiro, "id">) => Parceiro;
   updateParceiro: (id: string, patch: Partial<Omit<Parceiro, "id">>) => void;
   deleteParceiro: (id: string) => void;
+
+  // Kits
+  createKit: (data: Omit<Kit, "id" | "criadoEm" | "atualizadoEm">) => Kit;
+  updateKit: (id: string, patch: Partial<Omit<Kit, "id" | "criadoEm" | "atualizadoEm">>) => void;
+  deleteKit: (id: string) => void;
+  setKitItems: (kitId: string, items: KitItem[]) => void;
 
   // Clientes
   createCliente: (data: Omit<Cliente, "id">) => Cliente;
@@ -153,6 +181,7 @@ type ArpStore = {
   createOportunidade: (data: Omit<Oportunidade, "id" | "codigo" | "itens">) => Oportunidade;
   updateOportunidade: (id: string, patch: Partial<Omit<Oportunidade, "id" | "codigo" | "itens">>) => void;
   setOportunidadeItens: (id: string, itens: OportunidadeItem[]) => void;
+  setOportunidadeKits: (id: string, kits: OportunidadeKit[], kitItems: OportunidadeKitItem[]) => void;
   deleteOportunidade: (id: string) => void;
 
   addOportunidadeItem: (
@@ -292,6 +321,57 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, parceiros: s.parceiros.filter((p) => p.id !== id) }));
       },
 
+      // Kits
+      createKit: (data) => {
+        const now = new Date().toISOString();
+        const kit: Kit = {
+          id: uid("kit"),
+          nomeKit: (data.nomeKit ?? "").trim(),
+          arpId: data.arpId,
+          criadoEm: now,
+          atualizadoEm: now,
+        };
+        setState((s) => ({ ...s, kits: [kit, ...s.kits] }));
+        return kit;
+      },
+      updateKit: (id, patch) => {
+        const now = new Date().toISOString();
+        setState((s) => ({
+          ...s,
+          kits: s.kits.map((k) =>
+            k.id === id
+              ? {
+                  ...k,
+                  ...patch,
+                  nomeKit: patch.nomeKit != null ? patch.nomeKit.trim() : k.nomeKit,
+                  atualizadoEm: now,
+                }
+              : k,
+          ),
+        }));
+      },
+      setKitItems: (kitId, items) => {
+        const now = new Date().toISOString();
+        setState((s) => ({
+          ...s,
+          kitItems: [...s.kitItems.filter((i) => i.kitId !== kitId), ...items],
+          kits: s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k)),
+        }));
+      },
+      deleteKit: (id) => {
+        setState((s) => {
+          const okToRemove = s.oportunidadeKits.filter((k) => k.kitId === id).map((k) => k.id);
+          return {
+            ...s,
+            kits: s.kits.filter((k) => k.id !== id),
+            kitItems: s.kitItems.filter((i) => i.kitId !== id),
+            oportunidadeKits: s.oportunidadeKits.filter((k) => k.kitId !== id),
+            oportunidadeKitItems: s.oportunidadeKitItems.filter((ki) => !okToRemove.includes(ki.oportunidadeKitId)),
+          };
+        });
+      },
+
+      // Clientes
       createCliente: (data) => {
         const cliente: Cliente = {
           id: uid("cli"),
@@ -326,6 +406,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
+      // ARPs
       createArp: (data) => {
         const arp: Arp = {
           id: uid("arp"),
@@ -347,6 +428,20 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           arps: s.arps.filter((a) => a.id !== id),
           oportunidades: s.oportunidades.filter((o) => o.arpId !== id),
+          kits: s.kits.filter((k) => k.arpId !== id),
+          kitItems: s.kitItems.filter((ki) => {
+            const kit = s.kits.find((k) => k.id === ki.kitId);
+            return kit?.arpId !== id;
+          }),
+          oportunidadeKits: s.oportunidadeKits.filter((ok) => {
+            const opp = s.oportunidades.find((o) => o.id === ok.oportunidadeId);
+            return opp?.arpId !== id;
+          }),
+          oportunidadeKitItems: s.oportunidadeKitItems.filter((ki) => {
+            const ok = s.oportunidadeKits.find((k) => k.id === ki.oportunidadeKitId);
+            const opp = ok ? s.oportunidades.find((o) => o.id === ok.oportunidadeId) : undefined;
+            return opp?.arpId !== id;
+          }),
           interacoesOportunidade: s.interacoesOportunidade.filter((i) => {
             const opp = s.oportunidades.find((o) => o.id === i.oportunidadeId);
             return opp?.arpId !== id;
@@ -589,12 +684,33 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
         }));
       },
+      setOportunidadeKits: (id, kits, kitItems) => {
+        setState((s) => {
+          const prevIds = s.oportunidadeKits
+            .filter((k) => k.oportunidadeId === id)
+            .map((k) => k.id);
+
+          return {
+            ...s,
+            oportunidadeKits: [...s.oportunidadeKits.filter((k) => k.oportunidadeId !== id), ...kits],
+            oportunidadeKitItems: [
+              ...s.oportunidadeKitItems.filter((ki) => !prevIds.includes(ki.oportunidadeKitId)),
+              ...kitItems,
+            ],
+          };
+        });
+      },
       deleteOportunidade: (id) => {
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.filter((o) => o.id !== id),
-          interacoesOportunidade: s.interacoesOportunidade.filter((i) => i.oportunidadeId !== id),
-        }));
+        setState((s) => {
+          const okIds = s.oportunidadeKits.filter((k) => k.oportunidadeId === id).map((k) => k.id);
+          return {
+            ...s,
+            oportunidades: s.oportunidades.filter((o) => o.id !== id),
+            oportunidadeKits: s.oportunidadeKits.filter((k) => k.oportunidadeId !== id),
+            oportunidadeKitItems: s.oportunidadeKitItems.filter((ki) => !okIds.includes(ki.oportunidadeKitId)),
+            interacoesOportunidade: s.interacoesOportunidade.filter((i) => i.oportunidadeId !== id),
+          };
+        });
       },
 
       addOportunidadeItem: (oportunidadeId, data) => {

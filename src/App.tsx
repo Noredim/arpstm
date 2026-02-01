@@ -13,6 +13,8 @@ import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import Estados from "./pages/Estados";
 import Cidades from "./pages/Cidades";
 import Parceiros from "./pages/Parceiros";
+import Kits from "./pages/Kits";
+import KitDetalhe from "./pages/KitDetalhe";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +36,8 @@ const App = () => (
             <Route path="/cadastros/estados" element={<Estados />} />
             <Route path="/cadastros/cidades" element={<Cidades />} />
             <Route path="/parceiros" element={<Parceiros />} />
+            <Route path="/kits" element={<Kits />} />
+            <Route path="/kits/:id" element={<KitDetalhe />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

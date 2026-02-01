@@ -124,6 +124,37 @@ export type OportunidadeItem = {
   quantidade: number;
 };
 
+export type Kit = {
+  id: string;
+  nomeKit: string;
+  arpId: string;
+  criadoEm: string; // ISO datetime
+  atualizadoEm: string; // ISO datetime
+};
+
+export type KitItem = {
+  id: string;
+  kitId: string;
+  loteId: string;
+  arpItemId: string;
+  quantidade: number;
+};
+
+export type OportunidadeKit = {
+  id: string;
+  oportunidadeId: string;
+  kitId: string;
+  quantidadeKits: number;
+};
+
+export type OportunidadeKitItem = {
+  id: string;
+  oportunidadeKitId: string;
+  loteId: string;
+  arpItemId: string;
+  quantidadeTotal: number;
+};
+
 export type Oportunidade = {
   id: string;
   codigo: number; // sequencial
