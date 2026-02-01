@@ -33,10 +33,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import type { Cidade, Estado } from "@/lib/arp-types";
+import type { Cidade, Estado, LogIntegracao } from "@/lib/arp-types";
 import { dateTimeBR } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCcw, ShieldAlert, Trash2 } from "lucide-react";
 
 function statusBadge(ativo: boolean) {
   return ativo ? (
@@ -51,7 +51,7 @@ function statusBadge(ativo: boolean) {
 type StatusFilter = "ALL" | "ATIVO" | "INATIVO";
 
 export default function CidadesPage() {
-  const { state, createCidade, updateCidade, deleteCidade } = useArpStore();
+  const { state, createCidade, updateCidade, deleteCidade, syncIbgeLocalidades } = useArpStore();
 
   const estadosById = React.useMemo(() => Object.fromEntries(state.estados.map((e) => [e.id, e])), [state.estados]);
 
@@ -77,6 +77,19 @@ export default function CidadesPage() {
   const [nome, setNome] = React.useState("");
   const [estadoId, setEstadoId] = React.useState("");
   const [ativo, setAtivo] = React.useState(true);
+
+  const isAdmin = state.currentUserRole === "ADMIN";
+  const [openSync, setOpenSync] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncProgress, setSyncProgress] = React.useState<string>("");
+
+  const lastSync = React.useMemo(() => {
+    const logs = (state.integrationLogs ?? []).filter((l) => l.tipo === "IBGE_SYNC");
+    if (logs.length === 0) return undefined;
+    return logs
+      .slice()
+      .sort((a, b) => (b.fimEm || "").localeCompare(a.fimEm || ""))[0] as LogIntegracao | undefined;
+  }, [state.integrationLogs]);
 
   const estadoOptions = React.useMemo(() => {
     const active = state.estados.filter((e) => e.ativo);
@@ -143,18 +156,54 @@ export default function CidadesPage() {
               <div className="mt-1 text-sm text-muted-foreground">
                 Cidades ativas aparecem nos seletores. Nomes repetidos são permitidos apenas em estados diferentes.
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="secondary" className="rounded-full">
+                  IBGE Sync
+                </Badge>
+                <span>
+                  Última sincronização: <span className="font-medium text-foreground">{dateTimeBR(lastSync?.fimEm)}</span>
+                </span>
+                {lastSync && (
+                  <Badge
+                    className={
+                      lastSync.status === "SUCESSO"
+                        ? "rounded-full bg-emerald-600 text-white"
+                        : "rounded-full bg-rose-600 text-white"
+                    }
+                  >
+                    {lastSync.status}
+                  </Badge>
+                )}
+              </div>
             </div>
-            <Button
-              className="rounded-2xl"
-              onClick={() => {
-                setEditing(null);
-                setOpen(true);
-              }}
-              disabled={state.estados.filter((e) => e.ativo).length === 0}
-            >
-              <Plus className="mr-2 size-4" />
-              Nova cidade
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={() => {
+                  if (!isAdmin) {
+                    toast({ title: "Sem permissão", description: "Somente Admin pode sincronizar com o IBGE.", variant: "destructive" });
+                    return;
+                  }
+                  setOpenSync(true);
+                }}
+                disabled={syncing}
+              >
+                {isAdmin ? <RefreshCcw className="mr-2 size-4" /> : <ShieldAlert className="mr-2 size-4" />}
+                Sincronizar com IBGE
+              </Button>
+              <Button
+                className="rounded-2xl"
+                onClick={() => {
+                  setEditing(null);
+                  setOpen(true);
+                }}
+                disabled={state.estados.filter((e) => e.ativo).length === 0}
+              >
+                <Plus className="mr-2 size-4" />
+                Nova cidade
+              </Button>
+            </div>
           </div>
 
           {state.estados.filter((e) => e.ativo).length === 0 && (
@@ -265,6 +314,63 @@ export default function CidadesPage() {
           </div>
         </Card>
       </div>
+
+      <AlertDialog open={openSync} onOpenChange={setOpenSync}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sincronizar com IBGE?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso irá atualizar Estados e Cidades pelo IBGE (UPSERT). Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {syncing && (
+            <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              {syncProgress || "Sincronizando…"}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-2xl" disabled={syncing}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-2xl"
+              disabled={syncing}
+              onClick={async () => {
+                if (!isAdmin) {
+                  toast({ title: "Sem permissão", description: "Somente Admin pode sincronizar com o IBGE.", variant: "destructive" });
+                  return;
+                }
+                try {
+                  setSyncing(true);
+                  setSyncProgress("Iniciando…");
+                  const resumo = await syncIbgeLocalidades({
+                    onProgress: (label) => setSyncProgress(label),
+                  });
+                  toast({
+                    title: "Sincronização concluída",
+                    description: `${resumo.totalCidadesInseridas} cidades criadas, ${resumo.totalCidadesAtualizadas} atualizadas.`,
+                  });
+                  if (resumo.totalErros > 0) {
+                    toast({
+                      title: "Sincronização com avisos",
+                      description: `${resumo.totalErros} erro(s). Verifique o log da última sincronização.`,
+                      variant: "destructive",
+                    });
+                  }
+                } catch (err: any) {
+                  toast({ title: "Erro na sincronização", description: String(err?.message ?? err), variant: "destructive" });
+                } finally {
+                  setSyncing(false);
+                  setSyncProgress("");
+                  setOpenSync(false);
+                }
+              }}
+            >
+              Continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl rounded-3xl">

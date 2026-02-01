@@ -20,6 +20,7 @@ export type Estado = {
   id: string;
   nome: string;
   sigla: string; // 2 chars, uppercase
+  ibgeId?: number; // unique (sincronizado via IBGE)
   ativo: boolean;
   criadoEm: string; // ISO
   atualizadoEm: string; // ISO
@@ -29,6 +30,7 @@ export type Cidade = {
   id: string;
   nome: string;
   estadoId: string;
+  ibgeId?: number; // unique (sincronizado via IBGE)
   ativo: boolean;
   criadoEm: string; // ISO
   atualizadoEm: string; // ISO
@@ -140,4 +142,20 @@ export type Oportunidade = {
   itens: OportunidadeItem[];
   kits?: OportunidadeKit[];
   kitItens?: OportunidadeKitItem[];
+};
+
+export type LogIntegracaoTipo = "IBGE_SYNC";
+export type LogIntegracaoStatus = "SUCESSO" | "ERRO";
+
+export type LogIntegracao = {
+  id: string;
+  tipo: LogIntegracaoTipo;
+  inicioEm: string;
+  fimEm: string;
+  status: LogIntegracaoStatus;
+  mensagem?: string;
+  totalEstados: number;
+  totalCidadesInseridas: number;
+  totalCidadesAtualizadas: number;
+  totalErros: number;
 };

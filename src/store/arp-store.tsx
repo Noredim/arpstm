@@ -9,18 +9,22 @@ import type {
   Estado,
   Kit,
   KitItem,
+  LogIntegracao,
   Oportunidade,
   OportunidadeItem,
   OportunidadeKit,
   OportunidadeKitItem,
 } from "@/lib/arp-types";
 import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
+import { syncIbgeLocalidades } from "@/lib/ibge-sync";
 
 type ArpState = {
   clientes: Cliente[];
   arps: Arp[];
   estados: Estado[];
   cidades: Cidade[];
+  integrationLogs: LogIntegracao[];
+  currentUserRole: "ADMIN" | "USER";
   kits: Kit[];
   kitItems: KitItem[];
   oportunidades: Oportunidade[];
@@ -31,39 +35,40 @@ const STORAGE_KEY = "dyad:arp:v1";
 
 function seedEstadosBR(): Estado[] {
   const now = nowIso();
-  const data: Array<{ nome: string; sigla: string }> = [
-    { nome: "Acre", sigla: "AC" },
-    { nome: "Alagoas", sigla: "AL" },
-    { nome: "Amapá", sigla: "AP" },
-    { nome: "Amazonas", sigla: "AM" },
-    { nome: "Bahia", sigla: "BA" },
-    { nome: "Ceará", sigla: "CE" },
-    { nome: "Distrito Federal", sigla: "DF" },
-    { nome: "Espírito Santo", sigla: "ES" },
-    { nome: "Goiás", sigla: "GO" },
-    { nome: "Maranhão", sigla: "MA" },
-    { nome: "Mato Grosso", sigla: "MT" },
-    { nome: "Mato Grosso do Sul", sigla: "MS" },
-    { nome: "Minas Gerais", sigla: "MG" },
-    { nome: "Pará", sigla: "PA" },
-    { nome: "Paraíba", sigla: "PB" },
-    { nome: "Paraná", sigla: "PR" },
-    { nome: "Pernambuco", sigla: "PE" },
-    { nome: "Piauí", sigla: "PI" },
-    { nome: "Rio de Janeiro", sigla: "RJ" },
-    { nome: "Rio Grande do Norte", sigla: "RN" },
-    { nome: "Rio Grande do Sul", sigla: "RS" },
-    { nome: "Rondônia", sigla: "RO" },
-    { nome: "Roraima", sigla: "RR" },
-    { nome: "Santa Catarina", sigla: "SC" },
-    { nome: "São Paulo", sigla: "SP" },
-    { nome: "Sergipe", sigla: "SE" },
-    { nome: "Tocantins", sigla: "TO" },
+  const data: Array<{ nome: string; sigla: string; ibgeId: number }> = [
+    { nome: "Acre", sigla: "AC", ibgeId: 12 },
+    { nome: "Alagoas", sigla: "AL", ibgeId: 27 },
+    { nome: "Amapá", sigla: "AP", ibgeId: 16 },
+    { nome: "Amazonas", sigla: "AM", ibgeId: 13 },
+    { nome: "Bahia", sigla: "BA", ibgeId: 29 },
+    { nome: "Ceará", sigla: "CE", ibgeId: 23 },
+    { nome: "Distrito Federal", sigla: "DF", ibgeId: 53 },
+    { nome: "Espírito Santo", sigla: "ES", ibgeId: 32 },
+    { nome: "Goiás", sigla: "GO", ibgeId: 52 },
+    { nome: "Maranhão", sigla: "MA", ibgeId: 21 },
+    { nome: "Mato Grosso", sigla: "MT", ibgeId: 51 },
+    { nome: "Mato Grosso do Sul", sigla: "MS", ibgeId: 50 },
+    { nome: "Minas Gerais", sigla: "MG", ibgeId: 31 },
+    { nome: "Pará", sigla: "PA", ibgeId: 15 },
+    { nome: "Paraíba", sigla: "PB", ibgeId: 25 },
+    { nome: "Paraná", sigla: "PR", ibgeId: 41 },
+    { nome: "Pernambuco", sigla: "PE", ibgeId: 26 },
+    { nome: "Piauí", sigla: "PI", ibgeId: 22 },
+    { nome: "Rio de Janeiro", sigla: "RJ", ibgeId: 33 },
+    { nome: "Rio Grande do Norte", sigla: "RN", ibgeId: 24 },
+    { nome: "Rio Grande do Sul", sigla: "RS", ibgeId: 43 },
+    { nome: "Rondônia", sigla: "RO", ibgeId: 11 },
+    { nome: "Roraima", sigla: "RR", ibgeId: 14 },
+    { nome: "Santa Catarina", sigla: "SC", ibgeId: 42 },
+    { nome: "São Paulo", sigla: "SP", ibgeId: 35 },
+    { nome: "Sergipe", sigla: "SE", ibgeId: 28 },
+    { nome: "Tocantins", sigla: "TO", ibgeId: 17 },
   ];
   return data.map((s) => ({
     id: uid("uf"),
     nome: s.nome,
     sigla: s.sigla,
+    ibgeId: s.ibgeId,
     ativo: true,
     criadoEm: now,
     atualizadoEm: now,
@@ -79,6 +84,8 @@ function loadInitial(): ArpState {
         arps: [],
         estados: seedEstadosBR(),
         cidades: [],
+        integrationLogs: [],
+        currentUserRole: "ADMIN",
         kits: [],
         kitItems: [],
         oportunidades: [],
@@ -88,12 +95,16 @@ function loadInitial(): ArpState {
 
     const estados = (parsed as any).estados as Estado[] | undefined;
     const cidades = (parsed as any).cidades as Cidade[] | undefined;
+    const integrationLogs = ((parsed as any).integrationLogs as LogIntegracao[] | undefined) ?? [];
+    const currentUserRole = ((parsed as any).currentUserRole as "ADMIN" | "USER" | undefined) ?? "ADMIN";
 
     return {
       clientes: parsed.clientes ?? [],
       arps: parsed.arps ?? [],
       estados: estados && estados.length > 0 ? estados : seedEstadosBR(),
       cidades: cidades ?? [],
+      integrationLogs,
+      currentUserRole,
       kits: (parsed as any).kits ?? [],
       kitItems: (parsed as any).kitItems ?? [],
       oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
@@ -110,6 +121,8 @@ function loadInitial(): ArpState {
       arps: [],
       estados: seedEstadosBR(),
       cidades: [],
+      integrationLogs: [],
+      currentUserRole: "ADMIN",
       kits: [],
       kitItems: [],
       oportunidades: [],
@@ -139,6 +152,14 @@ type ArpStore = {
   createCidade: (data: Pick<Cidade, "nome" | "estadoId" | "ativo">) => Cidade;
   updateCidade: (id: string, patch: Partial<Pick<Cidade, "nome" | "estadoId" | "ativo">>) => void;
   deleteCidade: (id: string) => void;
+
+  // Integrações
+  syncIbgeLocalidades: (params?: { onProgress?: (label: string) => void }) => Promise<{
+    totalEstados: number;
+    totalCidadesInseridas: number;
+    totalCidadesAtualizadas: number;
+    totalErros: number;
+  }>;
 
   // ARPs
   createArp: (data: Omit<Arp, "id" | "participantes" | "lotes">) => Arp;
@@ -254,6 +275,29 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
 
     return {
       state,
+
+      syncIbgeLocalidades: async (params) => {
+        const res = await syncIbgeLocalidades({
+          role: state.currentUserRole,
+          estados: state.estados,
+          cidades: state.cidades,
+          delayBetweenUfMs: 200,
+          onProgress: (p) => {
+            if (p.stage === "ESTADOS") params?.onProgress?.("Sincronizando estados…");
+            if (p.stage === "CIDADES") params?.onProgress?.(`Sincronizando… UF: ${p.uf}`);
+            if (p.stage === "DONE") params?.onProgress?.("Finalizando…");
+          },
+        });
+
+        setState((s) => ({
+          ...s,
+          estados: res.estados,
+          cidades: res.cidades,
+          integrationLogs: [res.log, ...(s.integrationLogs ?? [])],
+        }));
+
+        return res.resumo;
+      },
 
       createCliente: (data) => {
         const cliente: Cliente = {
