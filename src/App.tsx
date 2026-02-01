@@ -10,6 +10,8 @@ import Atas from "./pages/Atas";
 import AtaDetalhe from "./pages/AtaDetalhe";
 import Kits from "./pages/Kits";
 import KitDetalhe from "./pages/KitDetalhe";
+import Estados from "./pages/Estados";
+import Cidades from "./pages/Cidades";
 import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import NotFound from "./pages/NotFound";
@@ -25,6 +27,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/estados" element={<Estados />} />
+            <Route path="/cidades" element={<Cidades />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/atas" element={<Atas />} />
             <Route path="/atas/:id" element={<AtaDetalhe />} />

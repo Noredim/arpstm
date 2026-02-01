@@ -16,6 +16,24 @@ export type Cliente = {
   esfera: Esfera;
 };
 
+export type Estado = {
+  id: string;
+  nome: string;
+  sigla: string; // 2 chars, uppercase
+  ativo: boolean;
+  criadoEm: string; // ISO
+  atualizadoEm: string; // ISO
+};
+
+export type Cidade = {
+  id: string;
+  nome: string;
+  estadoId: string;
+  ativo: boolean;
+  criadoEm: string; // ISO
+  atualizadoEm: string; // ISO
+};
+
 export type ArpItemEquipamento = {
   id: string;
   arpItemId: string;

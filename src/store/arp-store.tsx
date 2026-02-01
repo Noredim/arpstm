@@ -5,6 +5,8 @@ import type {
   ArpItemEquipamento,
   ArpLote,
   Cliente,
+  Cidade,
+  Estado,
   Kit,
   KitItem,
   Oportunidade,
@@ -17,6 +19,8 @@ import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
 type ArpState = {
   clientes: Cliente[];
   arps: Arp[];
+  estados: Estado[];
+  cidades: Cidade[];
   kits: Kit[];
   kitItems: KitItem[];
   oportunidades: Oportunidade[];
@@ -25,6 +29,47 @@ type ArpState = {
 
 const STORAGE_KEY = "dyad:arp:v1";
 
+function seedEstadosBR(): Estado[] {
+  const now = nowIso();
+  const data: Array<{ nome: string; sigla: string }> = [
+    { nome: "Acre", sigla: "AC" },
+    { nome: "Alagoas", sigla: "AL" },
+    { nome: "Amapá", sigla: "AP" },
+    { nome: "Amazonas", sigla: "AM" },
+    { nome: "Bahia", sigla: "BA" },
+    { nome: "Ceará", sigla: "CE" },
+    { nome: "Distrito Federal", sigla: "DF" },
+    { nome: "Espírito Santo", sigla: "ES" },
+    { nome: "Goiás", sigla: "GO" },
+    { nome: "Maranhão", sigla: "MA" },
+    { nome: "Mato Grosso", sigla: "MT" },
+    { nome: "Mato Grosso do Sul", sigla: "MS" },
+    { nome: "Minas Gerais", sigla: "MG" },
+    { nome: "Pará", sigla: "PA" },
+    { nome: "Paraíba", sigla: "PB" },
+    { nome: "Paraná", sigla: "PR" },
+    { nome: "Pernambuco", sigla: "PE" },
+    { nome: "Piauí", sigla: "PI" },
+    { nome: "Rio de Janeiro", sigla: "RJ" },
+    { nome: "Rio Grande do Norte", sigla: "RN" },
+    { nome: "Rio Grande do Sul", sigla: "RS" },
+    { nome: "Rondônia", sigla: "RO" },
+    { nome: "Roraima", sigla: "RR" },
+    { nome: "Santa Catarina", sigla: "SC" },
+    { nome: "São Paulo", sigla: "SP" },
+    { nome: "Sergipe", sigla: "SE" },
+    { nome: "Tocantins", sigla: "TO" },
+  ];
+  return data.map((s) => ({
+    id: uid("uf"),
+    nome: s.nome,
+    sigla: s.sigla,
+    ativo: true,
+    criadoEm: now,
+    atualizadoEm: now,
+  }));
+}
+
 function loadInitial(): ArpState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -32,15 +77,23 @@ function loadInitial(): ArpState {
       return {
         clientes: [],
         arps: [],
+        estados: seedEstadosBR(),
+        cidades: [],
         kits: [],
         kitItems: [],
         oportunidades: [],
         oportunidadeSeq: 0,
       };
     const parsed = JSON.parse(raw) as Partial<ArpState>;
+
+    const estados = (parsed as any).estados as Estado[] | undefined;
+    const cidades = (parsed as any).cidades as Cidade[] | undefined;
+
     return {
       clientes: parsed.clientes ?? [],
       arps: parsed.arps ?? [],
+      estados: estados && estados.length > 0 ? estados : seedEstadosBR(),
+      cidades: cidades ?? [],
       kits: (parsed as any).kits ?? [],
       kitItems: (parsed as any).kitItems ?? [],
       oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
@@ -55,6 +108,8 @@ function loadInitial(): ArpState {
     return {
       clientes: [],
       arps: [],
+      estados: seedEstadosBR(),
+      cidades: [],
       kits: [],
       kitItems: [],
       oportunidades: [],
@@ -74,6 +129,16 @@ type ArpStore = {
   createCliente: (data: Omit<Cliente, "id">) => Cliente;
   updateCliente: (id: string, patch: Partial<Omit<Cliente, "id">>) => void;
   deleteCliente: (id: string) => void;
+
+  // Estados
+  createEstado: (data: Pick<Estado, "nome" | "sigla" | "ativo">) => Estado;
+  updateEstado: (id: string, patch: Partial<Pick<Estado, "nome" | "sigla" | "ativo">>) => void;
+  deleteEstado: (id: string) => void;
+
+  // Cidades
+  createCidade: (data: Pick<Cidade, "nome" | "estadoId" | "ativo">) => Cidade;
+  updateCidade: (id: string, patch: Partial<Pick<Cidade, "nome" | "estadoId" | "ativo">>) => void;
+  deleteCidade: (id: string) => void;
 
   // ARPs
   createArp: (data: Omit<Arp, "id" | "participantes" | "lotes">) => Arp;
@@ -160,6 +225,10 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const api = React.useMemo<ArpStore>(() => {
+    function normKey(v: string) {
+      return (v ?? "").trim().toLowerCase();
+    }
+
     function recalcKitItensForOportunidade(oportunidadeId: string, nextKits: OportunidadeKit[]) {
       const kitItemsByKitId: Record<string, KitItem[]> = {};
       for (const ki of state.kitItems) {
@@ -218,6 +287,113 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             participantes: a.participantes.filter((pid) => pid !== id),
           })),
         }));
+      },
+
+      createEstado: (data) => {
+        const sigla = (data.sigla ?? "").trim().toUpperCase();
+        if (!data.nome?.trim()) throw new Error("Informe o nome do estado.");
+        if (sigla.length !== 2) throw new Error("A sigla deve ter exatamente 2 caracteres.");
+        if (state.estados.some((e) => e.sigla.toUpperCase() === sigla)) throw new Error("Sigla já cadastrada.");
+        const now = nowIso();
+        const estado: Estado = {
+          id: uid("uf"),
+          nome: data.nome.trim(),
+          sigla,
+          ativo: data.ativo ?? true,
+          criadoEm: now,
+          atualizadoEm: now,
+        };
+        setState((s) => ({ ...s, estados: [estado, ...s.estados] }));
+        return estado;
+      },
+      updateEstado: (id, patch) => {
+        const nextSigla = patch.sigla != null ? patch.sigla.trim().toUpperCase() : undefined;
+        if (nextSigla != null && nextSigla.length !== 2) throw new Error("A sigla deve ter exatamente 2 caracteres.");
+        if (nextSigla != null && state.estados.some((e) => e.id !== id && e.sigla.toUpperCase() === nextSigla)) {
+          throw new Error("Sigla já cadastrada.");
+        }
+        setState((s) => ({
+          ...s,
+          estados: s.estados.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  ...patch,
+                  sigla: nextSigla ?? e.sigla,
+                  nome: patch.nome != null ? patch.nome : e.nome,
+                  atualizadoEm: nowIso(),
+                }
+              : e,
+          ),
+        }));
+      },
+      deleteEstado: (id) => {
+        if (state.cidades.some((c) => c.estadoId === id)) {
+          throw new Error("Não é possível excluir um estado que possui cidades vinculadas.");
+        }
+        setState((s) => ({ ...s, estados: s.estados.filter((e) => e.id !== id) }));
+      },
+
+      createCidade: (data) => {
+        const nome = (data.nome ?? "").trim();
+        if (!nome) throw new Error("Informe o nome da cidade.");
+        if (!data.estadoId) throw new Error("Selecione um estado.");
+        const estado = state.estados.find((e) => e.id === data.estadoId);
+        if (!estado) throw new Error("Estado não encontrado.");
+        if (!estado.ativo) throw new Error("Cidade só pode ser criada se o estado estiver ativo.");
+        const key = normKey(nome);
+        if (state.cidades.some((c) => c.estadoId === data.estadoId && normKey(c.nome) === key)) {
+          throw new Error("Já existe uma cidade com este nome neste estado.");
+        }
+        const now = nowIso();
+        const cidade: Cidade = {
+          id: uid("cid"),
+          nome,
+          estadoId: data.estadoId,
+          ativo: data.ativo ?? true,
+          criadoEm: now,
+          atualizadoEm: now,
+        };
+        setState((s) => ({ ...s, cidades: [cidade, ...s.cidades] }));
+        return cidade;
+      },
+      updateCidade: (id, patch) => {
+        const current = state.cidades.find((c) => c.id === id);
+        if (!current) throw new Error("Cidade não encontrada.");
+        const nextEstadoId = patch.estadoId ?? current.estadoId;
+        const nextNome = patch.nome != null ? patch.nome.trim() : current.nome;
+        if (!nextNome) throw new Error("Informe o nome da cidade.");
+        const estado = state.estados.find((e) => e.id === nextEstadoId);
+        if (!estado) throw new Error("Estado não encontrado.");
+        if (!estado.ativo && nextEstadoId !== current.estadoId) {
+          throw new Error("Cidade só pode ser movida para um estado ativo.");
+        }
+        const key = normKey(nextNome);
+        if (
+          state.cidades.some(
+            (c) => c.id !== id && c.estadoId === nextEstadoId && normKey(c.nome) === key,
+          )
+        ) {
+          throw new Error("Já existe uma cidade com este nome neste estado.");
+        }
+
+        setState((s) => ({
+          ...s,
+          cidades: s.cidades.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  ...patch,
+                  nome: nextNome,
+                  estadoId: nextEstadoId,
+                  atualizadoEm: nowIso(),
+                }
+              : c,
+          ),
+        }));
+      },
+      deleteCidade: (id) => {
+        setState((s) => ({ ...s, cidades: s.cidades.filter((c) => c.id !== id) }));
       },
 
       createArp: (data) => {

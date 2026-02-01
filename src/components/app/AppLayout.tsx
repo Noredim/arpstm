@@ -18,10 +18,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, FileText, Handshake, Home, Sparkles } from "lucide-react";
+import { Boxes, Building2, FileText, Handshake, Home, Map, MapPin, Sparkles } from "lucide-react";
 
 const nav = [
   { to: "/", label: "Início", icon: Home },
+  { to: "/estados", label: "Estados", icon: Map },
+  { to: "/cidades", label: "Cidades", icon: MapPin },
   { to: "/clientes", label: "Clientes", icon: Building2 },
   { to: "/atas", label: "Atas (ARP)", icon: FileText },
   { to: "/kits", label: "Kits", icon: Boxes },
