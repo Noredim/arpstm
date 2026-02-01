@@ -38,6 +38,15 @@ export function todayIso() {
   return local.toISOString().slice(0, 10);
 }
 
+export function addDaysIso(isoDate: string, days: number) {
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-").map((n) => Number(n));
+  const date = new Date(y, (m ?? 1) - 1, d ?? 1);
+  date.setDate(date.getDate() + Number(days || 0));
+  const local = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return local.toISOString().slice(0, 10);
+}
+
 export function getArpStatus(arp: Arp): ArpStatus {
   // tolera dados antigos (migração) com vencimento vazio
   if (!(arp as any).dataVencimento) return "VIGENTE";

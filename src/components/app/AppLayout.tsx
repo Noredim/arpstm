@@ -18,20 +18,28 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Building2, FileText, Handshake, Home, Sparkles } from "lucide-react";
+import { Building2, FileText, Handshake, Home, MapPin, Sparkles, UsersRound } from "lucide-react";
 
-const nav = [
+const navMain = [
   { to: "/", label: "Início", icon: Home },
   { to: "/clientes", label: "Clientes", icon: Building2 },
   { to: "/atas", label: "Atas (ARP)", icon: FileText },
   { to: "/oportunidades", label: "Oportunidades", icon: Handshake },
 ] as const;
 
+const navCadastros = [
+  { to: "/cadastros/estados", label: "Estados", icon: MapPin },
+  { to: "/cadastros/cidades", label: "Cidades", icon: MapPin },
+] as const;
+
+const navComercial = [{ to: "/parceiros", label: "Parceiros", icon: UsersRound }] as const;
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   const pageTitle = React.useMemo(() => {
-    const current = nav.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
+    const all = [...navMain, ...navCadastros, ...navComercial];
+    const current = all.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
     if (location.pathname === "/") return "Gestão de ARP";
     return current?.label ?? "Gestão de ARP";
   }, [location.pathname]);
@@ -45,8 +53,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-semibold tracking-tight">ARP • Atas</div>
-              <div className="truncate text-xs text-sidebar-foreground/70">Controle de saldo e adesões</div>
+              <div className="truncate text-sm font-semibold tracking-tight">ARP • Comercial</div>
+              <div className="truncate text-xs text-sidebar-foreground/70">Cadastros + oportunidades</div>
             </div>
           </div>
           <SidebarSeparator />
@@ -54,12 +62,56 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Menu</SidebarGroupLabel>
+            <SidebarGroupLabel>Operação</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {nav.map((item) => {
+                {navMain.map((item) => {
                   const Icon = item.icon;
                   const active = item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                        <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Cadastros básicos</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navCadastros.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname.startsWith(item.to);
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                        <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Comercial</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navComercial.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
                       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
@@ -96,7 +148,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold tracking-tight">{pageTitle}</div>
               <div className="truncate text-xs text-muted-foreground">
-                Atas, participantes, lotes e itens encapsulados — sem menus soltos.
+                Cadastros e oportunidades — tudo no fluxo.
               </div>
             </div>
           </div>

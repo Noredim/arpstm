@@ -4,16 +4,29 @@ import type {
   ArpItem,
   ArpItemEquipamento,
   ArpLote,
+  Cidade,
   Cliente,
+  Estado,
+  InteracaoOportunidade,
   Oportunidade,
   OportunidadeItem,
+  Parceiro,
 } from "@/lib/arp-types";
-import { digitsOnly, uid } from "@/lib/arp-utils";
+import { addDaysIso, digitsOnly, todayIso, uid } from "@/lib/arp-utils";
 
 type ArpState = {
+  // Cadastros Básicos
+  estados: Estado[];
+  cidades: Cidade[];
+
+  // Comercial
+  parceiros: Parceiro[];
+
+  // ARP
   clientes: Cliente[];
   arps: Arp[];
   oportunidades: Oportunidade[];
+  interacoesOportunidade: InteracaoOportunidade[];
   oportunidadeSeq: number;
 };
 
@@ -22,16 +35,54 @@ const STORAGE_KEY = "dyad:arp:v1";
 function loadInitial(): ArpState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { clientes: [], arps: [], oportunidades: [], oportunidadeSeq: 0 };
-    const parsed = JSON.parse(raw) as ArpState;
+    if (!raw)
+      return {
+        estados: [],
+        cidades: [],
+        parceiros: [],
+        clientes: [],
+        arps: [],
+        oportunidades: [],
+        interacoesOportunidade: [],
+        oportunidadeSeq: 0,
+      };
+
+    const parsed = JSON.parse(raw) as Partial<ArpState>;
+
+    // Migração: oportunidades antigas sem novos campos
+    const oportunidades = (parsed.oportunidades ?? []).map((o: any) => {
+      const dataLancamento = o.dataLancamento || todayIso();
+      const dataVencimento = o.dataVencimento || addDaysIso(dataLancamento, 60);
+      return {
+        ...o,
+        statusLista: o.statusLista ?? "ABERTA",
+        temperatura: o.temperatura ?? "FRIA",
+        dataLancamento,
+        dataVencimento,
+      } as Oportunidade;
+    });
+
     return {
+      estados: parsed.estados ?? [],
+      cidades: parsed.cidades ?? [],
+      parceiros: parsed.parceiros ?? [],
       clientes: parsed.clientes ?? [],
       arps: parsed.arps ?? [],
-      oportunidades: parsed.oportunidades ?? [],
+      oportunidades,
+      interacoesOportunidade: parsed.interacoesOportunidade ?? [],
       oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
     };
   } catch {
-    return { clientes: [], arps: [], oportunidades: [], oportunidadeSeq: 0 };
+    return {
+      estados: [],
+      cidades: [],
+      parceiros: [],
+      clientes: [],
+      arps: [],
+      oportunidades: [],
+      interacoesOportunidade: [],
+      oportunidadeSeq: 0,
+    };
   }
 }
 
@@ -41,6 +92,21 @@ function persist(state: ArpState) {
 
 type ArpStore = {
   state: ArpState;
+
+  // Estados
+  createEstado: (data: Omit<Estado, "id">) => Estado;
+  updateEstado: (id: string, patch: Partial<Omit<Estado, "id">>) => void;
+  deleteEstado: (id: string) => void;
+
+  // Cidades
+  createCidade: (data: Omit<Cidade, "id">) => Cidade;
+  updateCidade: (id: string, patch: Partial<Omit<Cidade, "id">>) => void;
+  deleteCidade: (id: string) => void;
+
+  // Parceiros
+  createParceiro: (data: Omit<Parceiro, "id">) => Parceiro;
+  updateParceiro: (id: string, patch: Partial<Omit<Parceiro, "id">>) => void;
+  deleteParceiro: (id: string) => void;
 
   // Clientes
   createCliente: (data: Omit<Cliente, "id">) => Cliente;
@@ -99,6 +165,10 @@ type ArpStore = {
     patch: Partial<Omit<OportunidadeItem, "id" | "oportunidadeId">>,
   ) => void;
   deleteOportunidadeItem: (oportunidadeId: string, itemId: string) => void;
+
+  // Interações
+  createInteracaoOportunidade: (data: Omit<InteracaoOportunidade, "id">) => InteracaoOportunidade;
+  deleteInteracaoOportunidade: (id: string) => void;
 };
 
 const ArpStoreContext = React.createContext<ArpStore | null>(null);
@@ -113,6 +183,114 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   const api = React.useMemo<ArpStore>(() => {
     return {
       state,
+
+      // Estados
+      createEstado: (data) => {
+        const estado: Estado = {
+          id: uid("uf"),
+          nome: (data.nome ?? "").trim(),
+          sigla: (data.sigla ?? "").trim().slice(0, 2).toUpperCase(),
+        };
+        setState((s) => ({ ...s, estados: [estado, ...s.estados] }));
+        return estado;
+      },
+      updateEstado: (id, patch) => {
+        setState((s) => ({
+          ...s,
+          estados: s.estados.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  ...patch,
+                  nome: patch.nome != null ? patch.nome.trim() : e.nome,
+                  sigla:
+                    patch.sigla != null
+                      ? patch.sigla.trim().slice(0, 2).toUpperCase()
+                      : e.sigla,
+                }
+              : e,
+          ),
+        }));
+      },
+      deleteEstado: (id) => {
+        setState((s) => ({
+          ...s,
+          estados: s.estados.filter((e) => e.id !== id),
+          cidades: s.cidades.filter((c) => c.estadoId !== id),
+          parceiros: s.parceiros.map((p) => ({
+            ...p,
+            estadosAtuacao: p.estadosAtuacao.filter((eid) => eid !== id),
+          })),
+        }));
+      },
+
+      // Cidades
+      createCidade: (data) => {
+        const cidade: Cidade = {
+          id: uid("cid"),
+          nome: (data.nome ?? "").trim(),
+          estadoId: data.estadoId,
+        };
+        setState((s) => ({ ...s, cidades: [cidade, ...s.cidades] }));
+        return cidade;
+      },
+      updateCidade: (id, patch) => {
+        setState((s) => ({
+          ...s,
+          cidades: s.cidades.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  ...patch,
+                  nome: patch.nome != null ? patch.nome.trim() : c.nome,
+                }
+              : c,
+          ),
+        }));
+      },
+      deleteCidade: (id) => {
+        setState((s) => ({ ...s, cidades: s.cidades.filter((c) => c.id !== id) }));
+      },
+
+      // Parceiros
+      createParceiro: (data) => {
+        const parceiro: Parceiro = {
+          id: uid("par"),
+          ...data,
+          nome: (data.nome ?? "").trim(),
+          cnpj: digitsOnly(data.cnpj),
+          nomeContato: (data.nomeContato ?? "").trim() || undefined,
+          telefoneContato: (data.telefoneContato ?? "").trim() || undefined,
+          estadosAtuacao: data.estadosAtuacao ?? [],
+        };
+        setState((s) => ({ ...s, parceiros: [parceiro, ...s.parceiros] }));
+        return parceiro;
+      },
+      updateParceiro: (id, patch) => {
+        setState((s) => ({
+          ...s,
+          parceiros: s.parceiros.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  ...patch,
+                  nome: patch.nome != null ? patch.nome.trim() : p.nome,
+                  cnpj: patch.cnpj != null ? digitsOnly(patch.cnpj) : p.cnpj,
+                  nomeContato:
+                    patch.nomeContato != null ? patch.nomeContato.trim() || undefined : p.nomeContato,
+                  telefoneContato:
+                    patch.telefoneContato != null
+                      ? patch.telefoneContato.trim() || undefined
+                      : p.telefoneContato,
+                  estadosAtuacao: patch.estadosAtuacao ?? p.estadosAtuacao,
+                }
+              : p,
+          ),
+        }));
+      },
+      deleteParceiro: (id) => {
+        setState((s) => ({ ...s, parceiros: s.parceiros.filter((p) => p.id !== id) }));
+      },
 
       createCliente: (data) => {
         const cliente: Cliente = {
@@ -169,6 +347,10 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           arps: s.arps.filter((a) => a.id !== id),
           oportunidades: s.oportunidades.filter((o) => o.arpId !== id),
+          interacoesOportunidade: s.interacoesOportunidade.filter((i) => {
+            const opp = s.oportunidades.find((o) => o.id === i.oportunidadeId);
+            return opp?.arpId !== id;
+          }),
         }));
       },
 
@@ -377,10 +559,15 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       createOportunidade: (data) => {
+        const dataLancamento = (data as any).dataLancamento || todayIso();
         const oportunidade: Oportunidade = {
           id: uid("opp"),
           codigo: Math.min(9999, Math.max(1, state.oportunidadeSeq + 1)),
           itens: [],
+          statusLista: (data as any).statusLista ?? "ABERTA",
+          temperatura: (data as any).temperatura ?? "FRIA",
+          dataLancamento,
+          dataVencimento: (data as any).dataVencimento ?? addDaysIso(dataLancamento, 60),
           ...data,
         };
         setState((s) => ({
@@ -406,6 +593,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           oportunidades: s.oportunidades.filter((o) => o.id !== id),
+          interacoesOportunidade: s.interacoesOportunidade.filter((i) => i.oportunidadeId !== id),
         }));
       },
 
@@ -435,6 +623,16 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             o.id === oportunidadeId ? { ...o, itens: o.itens.filter((i) => i.id !== itemId) } : o,
           ),
         }));
+      },
+
+      // Interações
+      createInteracaoOportunidade: (data) => {
+        const it: InteracaoOportunidade = { id: uid("int"), ...data };
+        setState((s) => ({ ...s, interacoesOportunidade: [it, ...s.interacoesOportunidade] }));
+        return it;
+      },
+      deleteInteracaoOportunidade: (id) => {
+        setState((s) => ({ ...s, interacoesOportunidade: s.interacoesOportunidade.filter((i) => i.id !== id) }));
       },
     };
   }, [state]);
