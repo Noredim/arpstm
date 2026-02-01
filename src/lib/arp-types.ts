@@ -36,6 +36,17 @@ export type Cidade = {
   atualizadoEm: string; // ISO
 };
 
+export type UserRole = "ADMIN" | "GESTOR" | "COMERCIAL";
+
+export type Usuario = {
+  id: string;
+  email: string;
+  role: UserRole;
+  ativo: boolean;
+  criadoEm: string;
+  atualizadoEm: string;
+};
+
 export type ArpItemEquipamento = {
   id: string;
   arpItemId: string;

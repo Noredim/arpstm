@@ -51,7 +51,10 @@ function statusBadge(ativo: boolean) {
 type StatusFilter = "ALL" | "ATIVO" | "INATIVO";
 
 export default function CidadesPage() {
-  const { state, createCidade, updateCidade, deleteCidade, syncIbgeLocalidades } = useArpStore();
+  const { state, createCidade, updateCidade, deleteCidade, syncIbgeLocalidades, getCurrentUser } = useArpStore();
+
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser.role === "ADMIN";
 
   const estadosById = React.useMemo(() => Object.fromEntries(state.estados.map((e) => [e.id, e])), [state.estados]);
 
@@ -78,7 +81,6 @@ export default function CidadesPage() {
   const [estadoId, setEstadoId] = React.useState("");
   const [ativo, setAtivo] = React.useState(true);
 
-  const isAdmin = state.currentUserRole === "ADMIN";
   const [openSync, setOpenSync] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [syncProgress, setSyncProgress] = React.useState<string>("");

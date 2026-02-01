@@ -14,9 +14,13 @@ import type {
   OportunidadeItem,
   OportunidadeKit,
   OportunidadeKitItem,
+  UserRole,
+  Usuario,
 } from "@/lib/arp-types";
 import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
 import { syncIbgeLocalidades } from "@/lib/ibge-sync";
+
+const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
 type ArpState = {
   clientes: Cliente[];
@@ -24,7 +28,8 @@ type ArpState = {
   estados: Estado[];
   cidades: Cidade[];
   integrationLogs: LogIntegracao[];
-  currentUserRole: "ADMIN" | "USER";
+  usuarios: Usuario[];
+  currentUserEmail: string;
   kits: Kit[];
   kitItems: KitItem[];
   oportunidades: Oportunidade[];
@@ -32,6 +37,19 @@ type ArpState = {
 };
 
 const STORAGE_KEY = "dyad:arp:v1";
+
+function seedUsuarios(): { usuarios: Usuario[]; currentUserEmail: string } {
+  const now = nowIso();
+  const master: Usuario = {
+    id: uid("usr"),
+    email: MASTER_EMAIL,
+    role: "ADMIN",
+    ativo: true,
+    criadoEm: now,
+    atualizadoEm: now,
+  };
+  return { usuarios: [master], currentUserEmail: MASTER_EMAIL };
+}
 
 function seedEstadosBR(): Estado[] {
   const now = nowIso();
@@ -78,25 +96,36 @@ function seedEstadosBR(): Estado[] {
 function loadInitial(): ArpState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw)
+    if (!raw) {
+      const seedUser = seedUsuarios();
       return {
         clientes: [],
         arps: [],
         estados: seedEstadosBR(),
         cidades: [],
         integrationLogs: [],
-        currentUserRole: "ADMIN",
+        usuarios: seedUser.usuarios,
+        currentUserEmail: seedUser.currentUserEmail,
         kits: [],
         kitItems: [],
         oportunidades: [],
         oportunidadeSeq: 0,
       };
+    }
     const parsed = JSON.parse(raw) as Partial<ArpState>;
 
     const estados = (parsed as any).estados as Estado[] | undefined;
     const cidades = (parsed as any).cidades as Cidade[] | undefined;
     const integrationLogs = ((parsed as any).integrationLogs as LogIntegracao[] | undefined) ?? [];
-    const currentUserRole = ((parsed as any).currentUserRole as "ADMIN" | "USER" | undefined) ?? "ADMIN";
+    const usuarios = ((parsed as any).usuarios as Usuario[] | undefined) ?? seedUsuarios().usuarios;
+    const currentUserEmail =
+      ((parsed as any).currentUserEmail as string | undefined) ??
+      usuarios[0]?.email ??
+      MASTER_EMAIL;
+
+    const ensured = usuarios.some((u) => u.email.toLowerCase() === MASTER_EMAIL.toLowerCase())
+      ? usuarios
+      : [seedUsuarios().usuarios[0], ...usuarios];
 
     return {
       clientes: parsed.clientes ?? [],
@@ -104,7 +133,8 @@ function loadInitial(): ArpState {
       estados: estados && estados.length > 0 ? estados : seedEstadosBR(),
       cidades: cidades ?? [],
       integrationLogs,
-      currentUserRole,
+      usuarios: ensured,
+      currentUserEmail,
       kits: (parsed as any).kits ?? [],
       kitItems: (parsed as any).kitItems ?? [],
       oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
@@ -116,13 +146,15 @@ function loadInitial(): ArpState {
       oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
     };
   } catch {
+    const seedUser = seedUsuarios();
     return {
       clientes: [],
       arps: [],
       estados: seedEstadosBR(),
       cidades: [],
       integrationLogs: [],
-      currentUserRole: "ADMIN",
+      usuarios: seedUser.usuarios,
+      currentUserEmail: seedUser.currentUserEmail,
       kits: [],
       kitItems: [],
       oportunidades: [],
@@ -137,6 +169,13 @@ function persist(state: ArpState) {
 
 type ArpStore = {
   state: ArpState;
+
+  // RBAC / Usuários
+  getCurrentUser: () => Usuario;
+  setCurrentUserEmail: (email: string) => void;
+  createUsuario: (data: Pick<Usuario, "email" | "role" | "ativo">) => Usuario;
+  updateUsuario: (id: string, patch: Partial<Pick<Usuario, "email" | "role" | "ativo">>) => void;
+  deleteUsuario: (id: string) => void;
 
   // Clientes
   createCliente: (data: Omit<Cliente, "id">) => Cliente;
@@ -249,6 +288,20 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const api = React.useMemo<ArpStore>(() => {
+    function currentUser(): Usuario {
+      const found = state.usuarios.find((u) => u.email.toLowerCase() === state.currentUserEmail.toLowerCase());
+      return (
+        found ??
+        state.usuarios.find((u) => u.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) ??
+        seedUsuarios().usuarios[0]
+      );
+    }
+
+    function requireRole(allowed: UserRole[]) {
+      const u = currentUser();
+      if (!allowed.includes(u.role)) throw new Error("Sem permissão");
+    }
+
     function normKey(v: string) {
       return (v ?? "").trim().toLowerCase();
     }
@@ -279,9 +332,76 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
     return {
       state,
 
+      getCurrentUser: () => currentUser(),
+      setCurrentUserEmail: (email) => {
+        setState((s) => ({ ...s, currentUserEmail: email }));
+      },
+      createUsuario: (data) => {
+        requireRole(["ADMIN"]);
+        const email = (data.email ?? "").trim().toLowerCase();
+        if (!email || !email.includes("@")) throw new Error("Informe um e-mail válido.");
+        if (state.usuarios.some((u) => u.email.toLowerCase() === email)) throw new Error("E-mail já cadastrado.");
+        const now = nowIso();
+        const user: Usuario = {
+          id: uid("usr"),
+          email,
+          role: data.role,
+          ativo: data.ativo ?? true,
+          criadoEm: now,
+          atualizadoEm: now,
+        };
+        setState((s) => ({ ...s, usuarios: [user, ...s.usuarios] }));
+        return user;
+      },
+      updateUsuario: (id, patch) => {
+        requireRole(["ADMIN"]);
+        const target = state.usuarios.find((u) => u.id === id);
+        if (!target) throw new Error("Usuário não encontrado.");
+
+        const isMaster = target.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
+        if (isMaster) {
+          if (patch.email && patch.email.toLowerCase() !== MASTER_EMAIL.toLowerCase())
+            throw new Error("O usuário master não pode ter o e-mail alterado.");
+          if (patch.role && patch.role !== "ADMIN") throw new Error("O usuário master deve permanecer ADMIN.");
+          if (patch.ativo === false) throw new Error("O usuário master não pode ser desativado.");
+        }
+
+        const nextEmail = patch.email != null ? patch.email.trim().toLowerCase() : undefined;
+        if (nextEmail != null) {
+          if (!nextEmail.includes("@")) throw new Error("Informe um e-mail válido.");
+          if (state.usuarios.some((u) => u.id !== id && u.email.toLowerCase() === nextEmail))
+            throw new Error("E-mail já cadastrado.");
+        }
+
+        setState((s) => ({
+          ...s,
+          usuarios: s.usuarios.map((u) =>
+            u.id === id
+              ? { ...u, ...patch, email: nextEmail ?? u.email, atualizadoEm: nowIso() }
+              : u,
+          ),
+        }));
+      },
+      deleteUsuario: (id) => {
+        requireRole(["ADMIN"]);
+        const target = state.usuarios.find((u) => u.id === id);
+        if (!target) return;
+        if (target.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+          throw new Error("O usuário master não pode ser excluído.");
+        }
+        setState((s) => ({
+          ...s,
+          usuarios: s.usuarios.filter((u) => u.id !== id),
+          currentUserEmail:
+            s.currentUserEmail.toLowerCase() === target.email.toLowerCase()
+              ? MASTER_EMAIL
+              : s.currentUserEmail,
+        }));
+      },
+
       syncIbgeLocalidades: async (params) => {
         const res = await syncIbgeLocalidades({
-          role: state.currentUserRole,
+          role: currentUser().role === "ADMIN" ? "ADMIN" : "USER",
           estados: state.estados,
           cidades: state.cidades,
           delayBetweenUfMs: 200,
@@ -303,6 +423,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       createCliente: (data) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const cliente: Cliente = {
           id: uid("cli"),
           ...data,
@@ -312,6 +433,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return cliente;
       },
       updateCliente: (id, patch) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         setState((s) => ({
           ...s,
           clientes: s.clientes.map((c) =>
@@ -326,6 +448,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
       deleteCliente: (id) => {
+        requireRole(["ADMIN", "GESTOR"]);
         setState((s) => ({
           ...s,
           clientes: s.clientes.filter((c) => c.id !== id),
@@ -337,6 +460,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       createEstado: (data) => {
+        requireRole(["ADMIN", "GESTOR"]);
         const sigla = (data.sigla ?? "").trim().toUpperCase();
         if (!data.nome?.trim()) throw new Error("Informe o nome do estado.");
         if (sigla.length !== 2) throw new Error("A sigla deve ter exatamente 2 caracteres.");
@@ -354,6 +478,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return estado;
       },
       updateEstado: (id, patch) => {
+        requireRole(["ADMIN", "GESTOR"]);
         const nextSigla = patch.sigla != null ? patch.sigla.trim().toUpperCase() : undefined;
         if (nextSigla != null && nextSigla.length !== 2) throw new Error("A sigla deve ter exatamente 2 caracteres.");
         if (nextSigla != null && state.estados.some((e) => e.id !== id && e.sigla.toUpperCase() === nextSigla)) {
@@ -375,6 +500,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
       deleteEstado: (id) => {
+        requireRole(["ADMIN"]);
         if (state.cidades.some((c) => c.estadoId === id)) {
           throw new Error("Não é possível excluir um estado que possui cidades vinculadas.");
         }
@@ -382,6 +508,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       createCidade: (data) => {
+        requireRole(["ADMIN", "GESTOR"]);
         const nome = (data.nome ?? "").trim();
         if (!nome) throw new Error("Informe o nome da cidade.");
         if (!data.estadoId) throw new Error("Selecione um estado.");
@@ -405,6 +532,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return cidade;
       },
       updateCidade: (id, patch) => {
+        requireRole(["ADMIN", "GESTOR"]);
         const current = state.cidades.find((c) => c.id === id);
         if (!current) throw new Error("Cidade não encontrada.");
         const nextEstadoId = patch.estadoId ?? current.estadoId;
@@ -440,10 +568,12 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
       deleteCidade: (id) => {
+        requireRole(["ADMIN"]);
         setState((s) => ({ ...s, cidades: s.cidades.filter((c) => c.id !== id) }));
       },
 
       createArp: (data) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const arp: Arp = {
           id: uid("arp"),
           participantes: [],
@@ -454,12 +584,14 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return arp;
       },
       updateArp: (id, patch) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         setState((s) => ({
           ...s,
           arps: s.arps.map((a) => (a.id === id ? { ...a, ...patch } : a)),
         }));
       },
       deleteArp: (id) => {
+        requireRole(["ADMIN", "GESTOR"]);
         setState((s) => ({
           ...s,
           arps: s.arps.filter((a) => a.id !== id),

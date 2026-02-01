@@ -12,6 +12,7 @@ import Kits from "./pages/Kits";
 import KitDetalhe from "./pages/KitDetalhe";
 import Estados from "./pages/Estados";
 import Cidades from "./pages/Cidades";
+import Usuarios from "./pages/Usuarios";
 import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import NotFound from "./pages/NotFound";
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/estados" element={<Estados />} />
             <Route path="/cidades" element={<Cidades />} />
+            <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/atas" element={<Atas />} />
             <Route path="/atas/:id" element={<AtaDetalhe />} />

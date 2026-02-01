@@ -18,26 +18,44 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, FileText, Handshake, Home, Map, MapPin, Sparkles } from "lucide-react";
+import { Boxes, Building2, FileText, Handshake, Home, Map, MapPin, Shield, Sparkles } from "lucide-react";
+import { useArpStore } from "@/store/arp-store";
 
-const nav = [
-  { to: "/", label: "Início", icon: Home },
+const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
+
+const navBasico = [
   { to: "/estados", label: "Estados", icon: Map },
   { to: "/cidades", label: "Cidades", icon: MapPin },
+] as const;
+
+const navComercial = [
   { to: "/clientes", label: "Clientes", icon: Building2 },
   { to: "/atas", label: "Atas (ARP)", icon: FileText },
   { to: "/kits", label: "Kits", icon: Boxes },
   { to: "/oportunidades", label: "Oportunidades", icon: Handshake },
 ] as const;
 
+const navUsuario = [{ to: "/usuarios", label: "Usuários", icon: Shield }] as const;
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { getCurrentUser } = useArpStore();
+  const me = getCurrentUser();
+
+  const canSeeBasico = me.role === "ADMIN" || me.role === "GESTOR";
+  const canSeeUsuario = me.role === "ADMIN";
 
   const pageTitle = React.useMemo(() => {
-    const current = nav.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
+    const all = [
+      ...navHome,
+      ...(canSeeBasico ? navBasico : []),
+      ...navComercial,
+      ...(canSeeUsuario ? navUsuario : []),
+    ];
+    const current = all.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
     if (location.pathname === "/") return "Gestão de ARP";
     return current?.label ?? "Gestão de ARP";
-  }, [location.pathname]);
+  }, [canSeeBasico, canSeeUsuario, location.pathname]);
 
   return (
     <SidebarProvider defaultOpen>
@@ -57,12 +75,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Menu</SidebarGroupLabel>
+            <SidebarGroupLabel>Início</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {nav.map((item) => {
+                {navHome.map((item) => {
                   const Icon = item.icon;
-                  const active = item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+                  const active = location.pathname === "/";
                   return (
                     <SidebarMenuItem key={item.to}>
                       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
@@ -77,13 +95,85 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {canSeeBasico && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Cadastro básico</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navBasico.map((item) => {
+                    const Icon = item.icon;
+                    const active = location.pathname.startsWith(item.to);
+                    return (
+                      <SidebarMenuItem key={item.to}>
+                        <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                          <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                            <Icon />
+                            <span>{item.label}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Comercial</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navComercial.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname.startsWith(item.to);
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                        <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {canSeeUsuario && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Usuário</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navUsuario.map((item) => {
+                    const Icon = item.icon;
+                    const active = location.pathname.startsWith(item.to);
+                    return (
+                      <SidebarMenuItem key={item.to}>
+                        <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                          <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                            <Icon />
+                            <span>{item.label}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         <SidebarFooter>
           <div className="flex items-center justify-between gap-2 rounded-xl bg-sidebar-accent/60 p-2">
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="text-xs font-medium">Regras de saldo</div>
-              <div className="text-[11px] text-sidebar-foreground/70">Participante vs. Carona</div>
+              <div className="text-xs font-medium">Sessão</div>
+              <div className="truncate text-[11px] text-sidebar-foreground/70">
+                {me.email} • {me.role}
+              </div>
             </div>
             <Badge variant="secondary" className="rounded-full border border-sidebar-border bg-background/70">
               v1
