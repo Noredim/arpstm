@@ -565,16 +565,14 @@ export default function OportunidadeDetalhePage() {
                                 <SelectValue placeholder={row.loteId ? "Selecione" : "Escolha um lote"} />
                               </SelectTrigger>
                               <SelectContent>
-                                {(lote?.itens ?? []).map((it) => (
-                                  <SelectItem key={it.id} value={it.id}>
-                                    <div className="flex flex-col">
-                                      <span className="text-sm font-medium">{it.descricaoInterna}</span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {it.numeroItem} - {it.descricao}
-                                      </span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
+                                {(lote?.itens ?? []).map((it) => {
+                                  const label = `${it.numeroItem} - ${it.descricaoInterna}`;
+                                  return (
+                                    <SelectItem key={it.id} value={it.id}>
+                                      {label}
+                                    </SelectItem>
+                                  );
+                                })}
                               </SelectContent>
                             </Select>
                           </TableCell>
