@@ -18,12 +18,13 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Building2, FileText, Handshake, Home, Sparkles } from "lucide-react";
+import { Boxes, Building2, FileText, Handshake, Home, Sparkles } from "lucide-react";
 
 const nav = [
   { to: "/", label: "Início", icon: Home },
   { to: "/clientes", label: "Clientes", icon: Building2 },
   { to: "/atas", label: "Atas (ARP)", icon: FileText },
+  { to: "/kits", label: "Kits", icon: Boxes },
   { to: "/oportunidades", label: "Oportunidades", icon: Handshake },
 ] as const;
 
@@ -96,7 +97,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold tracking-tight">{pageTitle}</div>
               <div className="truncate text-xs text-muted-foreground">
-                Atas, participantes, lotes e itens encapsulados — sem menus soltos.
+                Estrutura na ATA, kits reutilizáveis e oportunidades com validação de saldo.
               </div>
             </div>
           </div>

@@ -38,6 +38,23 @@ export function todayIso() {
   return local.toISOString().slice(0, 10);
 }
 
+export function nowIso() {
+  return new Date().toISOString();
+}
+
+export function dateTimeBR(valueIso: string | undefined) {
+  if (!valueIso) return "—";
+  const d = new Date(valueIso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function getArpStatus(arp: Arp): ArpStatus {
   // tolera dados antigos (migração) com vencimento vazio
   if (!(arp as any).dataVencimento) return "VIGENTE";
@@ -52,6 +69,16 @@ export function getTipoAdesao(arp: Arp | undefined, clienteId: string): TipoAdes
   if (!arp) return "CARONA";
   const isParticipante = arp.participantes.includes(clienteId);
   return isParticipante ? "PARTICIPANTE" : "CARONA";
+}
+
+export function getNomeComercial(item: ArpItem) {
+  const explicit = (item as any).nomeComercial as string | undefined;
+  if (explicit?.trim()) return explicit.trim();
+
+  // fallback para dados antigos: "DCS - Dispositivo ..." => "DCS"
+  const di = (item as any).descricaoInterna as string | undefined;
+  const first = (di || "").split(/\s[-–—]\s/)[0]?.trim();
+  return first || (di || "").trim();
 }
 
 export function itemValorTotal(item: ArpItem) {
@@ -96,9 +123,13 @@ export function consumoPorTipo(params: {
   return oportunidades
     .filter((o) => (excludeOportunidadeId ? o.id !== excludeOportunidadeId : true))
     .filter((o) => getTipoAdesao(arpsById[o.arpId], o.clienteId) === tipo)
-    .flatMap((o) => o.itens)
-    .filter((i) => i.arpItemId === arpItemId)
-    .reduce((sum, i) => sum + (Number(i.quantidade) || 0), 0);
+    .flatMap((o) => {
+      const avulsos = o.itens ?? [];
+      const kits = o.kitItens ?? [];
+      return [...avulsos, ...kits];
+    })
+    .filter((i: any) => i.arpItemId === arpItemId)
+    .reduce((sum, i: any) => sum + (Number(i.quantidade ?? i.quantidadeTotal) || 0), 0);
 }
 
 export function max0(v: number) {

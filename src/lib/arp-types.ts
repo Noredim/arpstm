@@ -30,7 +30,9 @@ export type ArpItemBase = {
   id: string;
   loteId: string;
   numeroItem: string;
-  descricaoInterna: string; // novo campo (principal)
+  // novo: nome comercial (usado em selects e no módulo de KITs)
+  nomeComercial?: string;
+  descricaoInterna: string; // campo interno
   descricao: string; // descrição "oficial"
   unidade: string;
   total: number;
@@ -40,6 +42,8 @@ export type ArpItemBase = {
 export type ArpItemFornecimento = ArpItemBase & {
   kind: "FORNECIMENTO" | "INSTALACAO" | "COMODATO";
   valorUnitario: number;
+  // opcional: alguns itens (ex.: comodato) podem ter componente recorrente
+  valorUnitarioMensal?: number;
 };
 
 export type ArpItemManutencao = ArpItemBase & {
@@ -69,6 +73,22 @@ export type Arp = {
   lotes: ArpLote[];
 };
 
+export type Kit = {
+  id: string;
+  nomeKit: string;
+  ataId: string;
+  criadoEm: string; // ISO
+  atualizadoEm: string; // ISO
+};
+
+export type KitItem = {
+  id: string;
+  kitId: string;
+  loteId: string;
+  arpItemId: string;
+  quantidade: number;
+};
+
 export type OportunidadeItem = {
   id: string;
   oportunidadeId: string;
@@ -77,10 +97,29 @@ export type OportunidadeItem = {
   quantidade: number;
 };
 
+export type OportunidadeKit = {
+  id: string;
+  oportunidadeId: string;
+  kitId: string;
+  quantidadeKits: number;
+};
+
+export type OportunidadeKitItem = {
+  // id estável: `${oportunidadeKitId}:${kitItemId}`
+  id: string;
+  oportunidadeId: string;
+  oportunidadeKitId: string;
+  loteId: string;
+  arpItemId: string;
+  quantidadeTotal: number;
+};
+
 export type Oportunidade = {
   id: string;
   codigo: number; // sequencial
   clienteId: string;
   arpId: string;
   itens: OportunidadeItem[];
+  kits?: OportunidadeKit[];
+  kitItens?: OportunidadeKitItem[];
 };

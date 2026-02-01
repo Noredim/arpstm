@@ -5,14 +5,20 @@ import type {
   ArpItemEquipamento,
   ArpLote,
   Cliente,
+  Kit,
+  KitItem,
   Oportunidade,
   OportunidadeItem,
+  OportunidadeKit,
+  OportunidadeKitItem,
 } from "@/lib/arp-types";
-import { digitsOnly, uid } from "@/lib/arp-utils";
+import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
 
 type ArpState = {
   clientes: Cliente[];
   arps: Arp[];
+  kits: Kit[];
+  kitItems: KitItem[];
   oportunidades: Oportunidade[];
   oportunidadeSeq: number;
 };
@@ -22,16 +28,38 @@ const STORAGE_KEY = "dyad:arp:v1";
 function loadInitial(): ArpState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { clientes: [], arps: [], oportunidades: [], oportunidadeSeq: 0 };
-    const parsed = JSON.parse(raw) as ArpState;
+    if (!raw)
+      return {
+        clientes: [],
+        arps: [],
+        kits: [],
+        kitItems: [],
+        oportunidades: [],
+        oportunidadeSeq: 0,
+      };
+    const parsed = JSON.parse(raw) as Partial<ArpState>;
     return {
       clientes: parsed.clientes ?? [],
       arps: parsed.arps ?? [],
-      oportunidades: parsed.oportunidades ?? [],
+      kits: (parsed as any).kits ?? [],
+      kitItems: (parsed as any).kitItems ?? [],
+      oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
+        ...o,
+        itens: o.itens ?? [],
+        kits: o.kits ?? [],
+        kitItens: o.kitItens ?? [],
+      })),
       oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
     };
   } catch {
-    return { clientes: [], arps: [], oportunidades: [], oportunidadeSeq: 0 };
+    return {
+      clientes: [],
+      arps: [],
+      kits: [],
+      kitItems: [],
+      oportunidades: [],
+      oportunidadeSeq: 0,
+    };
   }
 }
 
@@ -83,10 +111,31 @@ type ArpStore = {
   ) => void;
   deleteEquipamento: (arpId: string, loteId: string, arpItemId: string, equipamentoId: string) => void;
 
+  // Kits
+  createKit: (data: Pick<Kit, "nomeKit" | "ataId">) => Kit;
+  updateKit: (id: string, patch: Partial<Pick<Kit, "nomeKit" | "ataId">>) => void;
+  deleteKit: (id: string) => void;
+
+  addKitItem: (kitId: string, data: Omit<KitItem, "id" | "kitId">) => KitItem;
+  updateKitItem: (kitId: string, kitItemId: string, patch: Partial<Omit<KitItem, "id" | "kitId">>) => void;
+  deleteKitItem: (kitId: string, kitItemId: string) => void;
+
   // Oportunidades
   createOportunidade: (data: Omit<Oportunidade, "id" | "codigo" | "itens">) => Oportunidade;
   updateOportunidade: (id: string, patch: Partial<Omit<Oportunidade, "id" | "codigo" | "itens">>) => void;
   setOportunidadeItens: (id: string, itens: OportunidadeItem[]) => void;
+
+  addOportunidadeKit: (
+    oportunidadeId: string,
+    data: Omit<OportunidadeKit, "id" | "oportunidadeId">,
+  ) => OportunidadeKit;
+  updateOportunidadeKit: (
+    oportunidadeId: string,
+    oportunidadeKitId: string,
+    patch: Partial<Omit<OportunidadeKit, "id" | "oportunidadeId">>,
+  ) => void;
+  deleteOportunidadeKit: (oportunidadeId: string, oportunidadeKitId: string) => void;
+
   deleteOportunidade: (id: string) => void;
 
   addOportunidadeItem: (
@@ -111,6 +160,29 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const api = React.useMemo<ArpStore>(() => {
+    function recalcKitItensForOportunidade(oportunidadeId: string, nextKits: OportunidadeKit[]) {
+      const kitItemsByKitId: Record<string, KitItem[]> = {};
+      for (const ki of state.kitItems) {
+        (kitItemsByKitId[ki.kitId] ??= []).push(ki);
+      }
+
+      const kitItens: OportunidadeKitItem[] = [];
+      for (const ok of nextKits) {
+        const items = kitItemsByKitId[ok.kitId] ?? [];
+        for (const ki of items) {
+          kitItens.push({
+            id: `${ok.id}:${ki.id}`,
+            oportunidadeId,
+            oportunidadeKitId: ok.id,
+            loteId: ki.loteId,
+            arpItemId: ki.arpItemId,
+            quantidadeTotal: (Number(ki.quantidade) || 0) * (Number(ok.quantidadeKits) || 0),
+          });
+        }
+      }
+      return kitItens;
+    }
+
     return {
       state,
 
@@ -169,6 +241,11 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           arps: s.arps.filter((a) => a.id !== id),
           oportunidades: s.oportunidades.filter((o) => o.arpId !== id),
+          kits: s.kits.filter((k) => k.ataId !== id),
+          kitItems: s.kitItems.filter((ki) => {
+            const kit = s.kits.find((k) => k.id === ki.kitId);
+            return kit ? kit.ataId !== id : false;
+          }),
         }));
       },
 
@@ -278,25 +355,41 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
       deleteItem: (arpId, loteId, itemId) => {
-        setState((s) => ({
-          ...s,
-          arps: s.arps.map((a) =>
-            a.id === arpId
-              ? {
-                  ...a,
-                  lotes: a.lotes.map((l) =>
-                    l.id === loteId
-                      ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) }
-                      : l,
-                  ),
-                }
-              : a,
-          ),
-          oportunidades: s.oportunidades.map((o) => ({
-            ...o,
-            itens: o.itens.filter((oi) => oi.arpItemId !== itemId),
-          })),
-        }));
+        setState((s) => {
+          // Remove também kitItems que apontam para esse item
+          const kitItems = s.kitItems.filter((ki) => ki.arpItemId !== itemId);
+
+          // Recalcula kitItens das oportunidades que usam kits afetados
+          const affectedKitIds = new Set(s.kitItems.filter((ki) => ki.arpItemId === itemId).map((ki) => ki.kitId));
+
+          const oportunidades = s.oportunidades.map((o) => {
+            const kits = o.kits ?? [];
+            if (!kits.some((k) => affectedKitIds.has(k.kitId))) return o;
+            const kitItens = recalcKitItensForOportunidade(o.id, kits);
+            return { ...o, kitItens };
+          });
+
+          return {
+            ...s,
+            arps: s.arps.map((a) =>
+              a.id === arpId
+                ? {
+                    ...a,
+                    lotes: a.lotes.map((l) =>
+                      l.id === loteId
+                        ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) }
+                        : l,
+                    ),
+                  }
+                : a,
+            ),
+            oportunidades: oportunidades.map((o) => ({
+              ...o,
+              itens: (o.itens ?? []).filter((oi) => oi.arpItemId !== itemId),
+            })),
+            kitItems,
+          };
+        });
       },
 
       addEquipamento: (arpId, loteId, arpItemId, data) => {
@@ -376,11 +469,106 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
+      createKit: ({ nomeKit, ataId }) => {
+        const now = nowIso();
+        const kit: Kit = {
+          id: uid("kit"),
+          nomeKit: nomeKit.trim(),
+          ataId,
+          criadoEm: now,
+          atualizadoEm: now,
+        };
+        setState((s) => ({ ...s, kits: [kit, ...s.kits] }));
+        return kit;
+      },
+      updateKit: (id, patch) => {
+        setState((s) => ({
+          ...s,
+          kits: s.kits.map((k) => (k.id === id ? { ...k, ...patch, atualizadoEm: nowIso() } : k)),
+        }));
+      },
+      deleteKit: (id) => {
+        setState((s) => {
+          const kits = s.kits.filter((k) => k.id !== id);
+          const kitItems = s.kitItems.filter((ki) => ki.kitId !== id);
+          const oportunidades = s.oportunidades.map((o) => {
+            const nextKits = (o.kits ?? []).filter((ok) => ok.kitId !== id);
+            const kitItens = recalcKitItensForOportunidade(o.id, nextKits);
+            return { ...o, kits: nextKits, kitItens };
+          });
+          return { ...s, kits, kitItems, oportunidades };
+        });
+      },
+
+      addKitItem: (kitId, data) => {
+        const ki: KitItem = {
+          id: uid("kitItem"),
+          kitId,
+          loteId: data.loteId,
+          arpItemId: data.arpItemId,
+          quantidade: Number(data.quantidade) || 1,
+        };
+        setState((s) => {
+          const kitItems = [...s.kitItems, ki];
+          const now = nowIso();
+          const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
+
+          const oportunidades = s.oportunidades.map((o) => {
+            const nextKits = o.kits ?? [];
+            if (!nextKits.some((k) => k.kitId === kitId)) return o;
+            const kitItens = recalcKitItensForOportunidade(o.id, nextKits);
+            return { ...o, kitItens };
+          });
+          return { ...s, kitItems, kits, oportunidades };
+        });
+        return ki;
+      },
+      updateKitItem: (kitId, kitItemId, patch) => {
+        setState((s) => {
+          const kitItems = s.kitItems.map((ki) =>
+            ki.id === kitItemId && ki.kitId === kitId
+              ? {
+                  ...ki,
+                  ...patch,
+                  quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade,
+                }
+              : ki,
+          );
+          const now = nowIso();
+          const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
+
+          const oportunidades = s.oportunidades.map((o) => {
+            const nextKits = o.kits ?? [];
+            if (!nextKits.some((k) => k.kitId === kitId)) return o;
+            const kitItens = recalcKitItensForOportunidade(o.id, nextKits);
+            return { ...o, kitItens };
+          });
+          return { ...s, kitItems, kits, oportunidades };
+        });
+      },
+      deleteKitItem: (kitId, kitItemId) => {
+        setState((s) => {
+          const kitItems = s.kitItems.filter((ki) => !(ki.id === kitItemId && ki.kitId === kitId));
+          const now = nowIso();
+          const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
+
+          const oportunidades = s.oportunidades.map((o) => {
+            const nextKits = o.kits ?? [];
+            if (!nextKits.some((k) => k.kitId === kitId)) return o;
+            const kitItens = recalcKitItensForOportunidade(o.id, nextKits);
+            return { ...o, kitItens };
+          });
+          return { ...s, kitItems, kits, oportunidades };
+        });
+      },
+
       createOportunidade: (data) => {
         const oportunidade: Oportunidade = {
           id: uid("opp"),
           codigo: Math.min(9999, Math.max(1, state.oportunidadeSeq + 1)),
           itens: [],
+          kits: [],
+          kitItens: [],
           ...data,
         };
         setState((s) => ({
@@ -402,6 +590,57 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
         }));
       },
+
+      addOportunidadeKit: (oportunidadeId, data) => {
+        const ok: OportunidadeKit = {
+          id: uid("oppKit"),
+          oportunidadeId,
+          kitId: data.kitId,
+          quantidadeKits: Number(data.quantidadeKits) || 1,
+        };
+        setState((s) => {
+          const oportunidades = s.oportunidades.map((o) => {
+            if (o.id !== oportunidadeId) return o;
+            const nextKits = [...(o.kits ?? []), ok];
+            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
+            return { ...o, kits: nextKits, kitItens };
+          });
+          return { ...s, oportunidades };
+        });
+        return ok;
+      },
+      updateOportunidadeKit: (oportunidadeId, oportunidadeKitId, patch) => {
+        setState((s) => {
+          const oportunidades = s.oportunidades.map((o) => {
+            if (o.id !== oportunidadeId) return o;
+            const nextKits = (o.kits ?? []).map((k) =>
+              k.id === oportunidadeKitId
+                ? {
+                    ...k,
+                    ...patch,
+                    quantidadeKits:
+                      patch.quantidadeKits != null ? Number(patch.quantidadeKits) : k.quantidadeKits,
+                  }
+                : k,
+            );
+            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
+            return { ...o, kits: nextKits, kitItens };
+          });
+          return { ...s, oportunidades };
+        });
+      },
+      deleteOportunidadeKit: (oportunidadeId, oportunidadeKitId) => {
+        setState((s) => {
+          const oportunidades = s.oportunidades.map((o) => {
+            if (o.id !== oportunidadeId) return o;
+            const nextKits = (o.kits ?? []).filter((k) => k.id !== oportunidadeKitId);
+            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
+            return { ...o, kits: nextKits, kitItens };
+          });
+          return { ...s, oportunidades };
+        });
+      },
+
       deleteOportunidade: (id) => {
         setState((s) => ({
           ...s,

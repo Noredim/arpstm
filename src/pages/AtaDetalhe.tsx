@@ -37,6 +37,7 @@ import type {
 import {
   clienteLabel,
   getArpStatus,
+  getNomeComercial,
   itemTotalAnual,
   itemValorTotal,
   itemValorTotalMensal,
@@ -146,6 +147,8 @@ export default function AtaDetalhePage() {
 
   function submitItem(lote: ArpLote, item: Partial<ArpItem>) {
     if (!item.numeroItem?.trim()) return toast({ title: "Informe o número do item", variant: "destructive" });
+    if (!(item as any).nomeComercial?.trim())
+      return toast({ title: "Informe o nome comercial", variant: "destructive" });
     if (!item.descricaoInterna?.trim())
       return toast({ title: "Informe a descrição interna", variant: "destructive" });
     if (!item.descricao?.trim()) return toast({ title: "Informe a descrição oficial", variant: "destructive" });
@@ -729,12 +732,14 @@ function ItemDialog({
   onDeleteEquip: (arpItemId: string, equipamentoId: string) => void;
 }) {
   const [numeroItem, setNumeroItem] = React.useState("");
+  const [nomeComercial, setNomeComercial] = React.useState("");
   const [descricaoInterna, setDescricaoInterna] = React.useState("");
   const [descricao, setDescricao] = React.useState("");
   const [unidade, setUnidade] = React.useState("");
   const [total, setTotal] = React.useState<number>(1);
 
   const [valorUnitario, setValorUnitario] = React.useState<number>(0);
+  const [valorUnitarioMensalOptional, setValorUnitarioMensalOptional] = React.useState<number>(0);
 
   const [tipoItem, setTipoItem] = React.useState<TipoItemManutencao>("PRODUTO");
   const [valorUnitarioMensal, setValorUnitarioMensal] = React.useState<number>(0);
@@ -745,6 +750,7 @@ function ItemDialog({
   React.useEffect(() => {
     if (!open) return;
     setNumeroItem(initial?.numeroItem ?? "");
+    setNomeComercial((initial as any)?.nomeComercial ?? (initial ? getNomeComercial(initial) : ""));
     setDescricaoInterna((initial as any)?.descricaoInterna ?? "");
     setDescricao(initial?.descricao ?? "");
     setUnidade(initial?.unidade ?? "");
@@ -754,8 +760,10 @@ function ItemDialog({
       const i = initial?.kind === "MANUTENCAO" ? initial : undefined;
       setTipoItem(i?.tipoItem ?? "PRODUTO");
       setValorUnitarioMensal((i as any)?.valorUnitarioMensal ?? 0);
+      setValorUnitarioMensalOptional(0);
     } else {
       setValorUnitario((initial as any)?.valorUnitario ?? 0);
+      setValorUnitarioMensalOptional((initial as any)?.valorUnitarioMensal ?? 0);
     }
   }, [open, initial, lote?.tipoFornecimento]);
 
@@ -808,6 +816,19 @@ function ItemDialog({
               </div>
 
               <div className="space-y-1.5">
+                <Label>Nome comercial</Label>
+                <Input
+                  value={nomeComercial}
+                  onChange={(e) => setNomeComercial(e.target.value)}
+                  className="h-11 rounded-2xl"
+                  placeholder="Ex.: DCS"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Usado nos selects de KITs e oportunidades (não mostra a descrição completa).
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <Label>Descrição interna (principal)</Label>
                 <Input
                   value={descricaoInterna}
@@ -839,17 +860,31 @@ function ItemDialog({
                 </div>
 
                 {!isManutencao ? (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label>Valor unitário</Label>
-                    <Input
-                      value={valorUnitario}
-                      onChange={(e) => setValorUnitario(Number(e.target.value || 0))}
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      className="h-11 rounded-2xl"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>Valor unitário</Label>
+                      <Input
+                        value={valorUnitario}
+                        onChange={(e) => setValorUnitario(Number(e.target.value || 0))}
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        className="h-11 rounded-2xl"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Valor mensal (opcional)</Label>
+                      <Input
+                        value={valorUnitarioMensalOptional}
+                        onChange={(e) => setValorUnitarioMensalOptional(Number(e.target.value || 0))}
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        className="h-11 rounded-2xl"
+                        placeholder="Use para comodato quando houver recorrência"
+                      />
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="space-y-1.5">
@@ -905,6 +940,7 @@ function ItemDialog({
                   onClick={() =>
                     onSubmit(lote, {
                       numeroItem,
+                      nomeComercial,
                       descricaoInterna,
                       descricao,
                       unidade,
@@ -912,7 +948,11 @@ function ItemDialog({
                       equipamentos,
                       ...(isManutencao
                         ? { kind: "MANUTENCAO", tipoItem, valorUnitarioMensal }
-                        : { kind: lote.tipoFornecimento, valorUnitario }),
+                        : {
+                            kind: lote.tipoFornecimento,
+                            valorUnitario,
+                            valorUnitarioMensal: valorUnitarioMensalOptional > 0 ? valorUnitarioMensalOptional : undefined,
+                          }),
                     } as any)
                   }
                 >

@@ -8,6 +8,8 @@ import Index from "./pages/Index";
 import Clientes from "./pages/Clientes";
 import Atas from "./pages/Atas";
 import AtaDetalhe from "./pages/AtaDetalhe";
+import Kits from "./pages/Kits";
+import KitDetalhe from "./pages/KitDetalhe";
 import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import NotFound from "./pages/NotFound";
@@ -26,6 +28,8 @@ const App = () => (
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/atas" element={<Atas />} />
             <Route path="/atas/:id" element={<AtaDetalhe />} />
+            <Route path="/kits" element={<Kits />} />
+            <Route path="/kits/:id" element={<KitDetalhe />} />
             <Route path="/oportunidades" element={<Oportunidades />} />
             <Route path="/oportunidades/:id" element={<OportunidadeDetalhe />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
