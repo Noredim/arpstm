@@ -43,7 +43,7 @@ import {
 } from "@/lib/csv-import";
 import { compareNumeroItem, moneyBRL, round2 } from "@/lib/arp-utils";
 import { uid } from "@/lib/arp-utils";
-import { Download, FileUp, Save, TriangleAlert } from "lucide-react";
+import { Download, FileUp, Save } from "lucide-react";
 
 type ImportMode = "UPSERT" | "INSERT_ONLY" | "REPLACE_ALL";
 
@@ -102,7 +102,7 @@ export function ImportItensCsvDialog({
   const hasBlockingErrors = Boolean(headerError) || (!onlyValid && invalidCount > 0);
 
   function downloadModel() {
-    const content = "Item;Especificacao;Unid;Total;ValorUnitario\n";
+    const content = "Item;Especificacao;Unid;Total;ValorUnitario;ValorUnitarioMensal\n";
     downloadText("modelo_itens.csv", content);
   }
 
@@ -153,7 +153,7 @@ export function ImportItensCsvDialog({
       const map = mapCsvHeaders(headers);
       if (!map) {
         setHeaderError(
-          "Cabeçalho inválido. Esperado: Item;Especificacao;Unid;Total;ValorUnitario (ou variações do edital).",
+          "Cabeçalho inválido. Esperado: Item;Especificacao;Unid;Total;ValorUnitario (e ValorUnitarioMensal opcional).",
         );
         setParsing(false);
         return;
@@ -162,12 +162,11 @@ export function ImportItensCsvDialog({
       const nextRows: CsvRowMapped[] = [];
       const nextErrors: CsvRowError[] = [];
 
-      // parsing em chunks pra evitar travar
       const chunk = 500;
       for (let i = 1; i < lines.length; i += chunk) {
         const slice = lines.slice(i, i + chunk);
         for (let j = 0; j < slice.length; j++) {
-          const lineNumber = i + j + 1; // 1-based com header na linha 1
+          const lineNumber = i + j + 1;
           const values = parseCsvLine(slice[j], delimiter);
 
           const numeroItem = String(values[map.item] ?? "").trim();
@@ -175,10 +174,12 @@ export function ImportItensCsvDialog({
           const unidRaw = String(values[map.unid] ?? "").trim();
           const totalRaw = String(values[map.total] ?? "").trim();
           const valorRaw = String(values[map.valorUnitario] ?? "").trim();
+          const valorMensalRaw = map.valorUnitarioMensal != null ? String(values[map.valorUnitarioMensal] ?? "") : "";
 
           const unidade = normalizeUnid(unidRaw);
           const total = parseLocaleNumber(totalRaw);
           const valorUnitario = parseLocaleNumber(valorRaw);
+          const valorUnitarioMensal = parseLocaleNumber(valorMensalRaw);
 
           const rowErrs: CsvRowError[] = [];
           if (!numeroItem) rowErrs.push({ lineNumber, field: "Item", message: "Obrigatório" });
@@ -186,8 +187,18 @@ export function ImportItensCsvDialog({
           if (!unidade) rowErrs.push({ lineNumber, field: "Unid", message: "Obrigatório" });
           if (!Number.isFinite(total) || total <= 0)
             rowErrs.push({ lineNumber, field: "Total", message: "Deve ser número > 0" });
-          if (!Number.isFinite(valorUnitario) || valorUnitario < 0)
-            rowErrs.push({ lineNumber, field: "ValorUnitario", message: "Deve ser número >= 0" });
+
+          if (loteTipo === "MANUTENCAO") {
+            if (!Number.isFinite(valorUnitario) || valorUnitario <= 0)
+              rowErrs.push({
+                lineNumber,
+                field: "ValorUnitario",
+                message: "Para Manutenção, este é o valor mensal e deve ser > 0",
+              });
+          } else {
+            if (!Number.isFinite(valorUnitario) || valorUnitario < 0)
+              rowErrs.push({ lineNumber, field: "ValorUnitario", message: "Deve ser número >= 0" });
+          }
 
           if (rowErrs.length) {
             nextErrors.push(...rowErrs);
@@ -200,6 +211,7 @@ export function ImportItensCsvDialog({
             unidade,
             total,
             valorUnitario,
+            valorUnitarioMensal: Number.isFinite(valorUnitarioMensal) ? valorUnitarioMensal : undefined,
             lineNumber,
             raw: {
               Item: numeroItem,
@@ -212,8 +224,6 @@ export function ImportItensCsvDialog({
         }
 
         setParseProgress(Math.round(((i + slice.length) / lines.length) * 100));
-        // yield
-        // eslint-disable-next-line no-await-in-loop
         await new Promise((r) => setTimeout(r, 0));
       }
 
@@ -229,20 +239,10 @@ export function ImportItensCsvDialog({
   }
 
   function applyImport(params: { closeAfter: boolean }) {
-    if (loteTipo === "MANUTENCAO") {
-      toast({
-        title: "Importação não disponível",
-        description: "Para lotes de Manutenção (mensal), use o cadastro manual.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (headerError) {
       toast({ title: "CSV inválido", description: headerError, variant: "destructive" });
       return;
     }
-
     if (!onlyValid && invalidCount > 0) {
       toast({
         title: "Existem linhas inválidas",
@@ -253,92 +253,70 @@ export function ImportItensCsvDialog({
     }
 
     const existingByNumero = Object.fromEntries(existingItems.map((it) => [it.numeroItem, it]));
-
     let inserted = 0;
     let updated = 0;
     let ignored = 0;
 
-    if (mode === "REPLACE_ALL") {
-      const next: ArpItem[] = rows.map((r) => {
-        inserted++;
-        const nomeComercial = nomeComercialFromEspecificacao(r.especificacao);
+    const mapRowToItemData = (r: CsvRowMapped) => {
+      const nomeComercial = nomeComercialFromEspecificacao(r.especificacao);
+      if (loteTipo === "MANUTENCAO") {
         return {
-          id: uid("item"),
-          loteId,
-          kind: loteTipo as any,
+          kind: "MANUTENCAO",
           numeroItem: r.numeroItem,
           nomeComercial,
           descricaoInterna: nomeComercial,
           descricao: r.especificacao,
           unidade: r.unidade,
           total: r.total,
-          valorUnitario: r.valorUnitario,
-          equipamentos: [],
-        } as any;
-      });
+          tipoItem: "PRODUTO",
+          valorUnitarioMensal: r.valorUnitario,
+        };
+      }
+      return {
+        kind: loteTipo,
+        numeroItem: r.numeroItem,
+        nomeComercial,
+        descricaoInterna: nomeComercial,
+        descricao: r.especificacao,
+        unidade: r.unidade,
+        total: r.total,
+        valorUnitario: r.valorUnitario,
+        valorUnitarioMensal: r.valorUnitarioMensal,
+      };
+    };
 
+    if (mode === "REPLACE_ALL") {
+      const next: ArpItem[] = rows.map((r) => {
+        inserted++;
+        return { id: uid("item"), loteId, ...mapRowToItemData(r), equipamentos: [] } as any;
+      });
       next.sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem));
-
-      const stats: ImportStats = { inserted, updated, ignored };
-      onApply(next, stats);
-      toast({
-        title: "Importação concluída",
-        description: `${inserted} inseridos, ${updated} atualizados, ${ignored} ignorados.`,
-      });
+      onApply(next, { inserted, updated, ignored });
+      toast({ title: "Importação concluída", description: `${inserted} inseridos.` });
       if (params.closeAfter) onOpenChange(false);
       return;
     }
 
     const nextItems: ArpItem[] = existingItems.map((it) => ({ ...it } as any));
-
     for (const r of rows) {
       const existing = existingByNumero[r.numeroItem];
-      const nomeComercial = nomeComercialFromEspecificacao(r.especificacao);
-
+      const itemData = mapRowToItemData(r);
       if (existing) {
         if (mode === "INSERT_ONLY") {
           ignored++;
           continue;
         }
-
         updated++;
         const idx = nextItems.findIndex((it) => it.id === existing.id);
-        if (idx >= 0) {
-          nextItems[idx] = {
-            ...(nextItems[idx] as any),
-            numeroItem: r.numeroItem,
-            nomeComercial,
-            descricaoInterna: nomeComercial,
-            descricao: r.especificacao,
-            unidade: r.unidade,
-            total: r.total,
-            valorUnitario: r.valorUnitario,
-            kind: loteTipo as any,
-          } as any;
-        }
+        if (idx >= 0) nextItems[idx] = { ...(nextItems[idx] as any), ...itemData };
       } else {
         inserted++;
-        nextItems.push({
-          id: uid("item"),
-          loteId,
-          kind: loteTipo as any,
-          numeroItem: r.numeroItem,
-          nomeComercial,
-          descricaoInterna: nomeComercial,
-          descricao: r.especificacao,
-          unidade: r.unidade,
-          total: r.total,
-          valorUnitario: r.valorUnitario,
-          equipamentos: [],
-        } as any);
+        nextItems.push({ id: uid("item"), loteId, ...itemData, equipamentos: [] } as any);
       }
     }
 
-    // ordena pelo numeroItem (por partes)
     nextItems.sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem));
-
-    const stats: ImportStats = { inserted, updated, ignored };
-    onApply(nextItems, stats);
+    onApply(nextItems, { inserted, updated, ignored });
     toast({
       title: "Importação concluída",
       description: `${inserted} inseridos, ${updated} atualizados, ${ignored} ignorados.`,
@@ -347,8 +325,11 @@ export function ImportItensCsvDialog({
   }
 
   const totalPreview = React.useMemo(() => {
-    if (loteTipo === "MANUTENCAO") return { label: "—", value: 0 };
-    const sum = rows.reduce((acc, r) => acc + round2((Number(r.total) || 0) * (Number(r.valorUnitario) || 0)), 0);
+    if (loteTipo === "MANUTENCAO") {
+      const sum = rows.reduce((acc, r) => acc + round2(r.total * r.valorUnitario), 0);
+      return { label: `${moneyBRL(sum)} /mês`, value: sum };
+    }
+    const sum = rows.reduce((acc, r) => acc + round2(r.total * r.valorUnitario), 0);
     return { label: moneyBRL(sum), value: sum };
   }, [loteTipo, rows]);
 
@@ -360,25 +341,13 @@ export function ImportItensCsvDialog({
             <DialogHeader className="space-y-2">
               <DialogTitle className="text-base tracking-tight">Importar CSV — Itens do Lote</DialogTitle>
               <DialogDescription>
-                Envie um arquivo .csv (separador " ;" ou ","). Colunas extras serão ignoradas.
+                Envie um arquivo .csv (separador ";" ou ","). Colunas extras serão ignoradas.
               </DialogDescription>
             </DialogHeader>
           </div>
 
           <div className="flex-1 overflow-y-auto p-5">
             <div className="grid gap-4">
-              {loteTipo === "MANUTENCAO" && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <div className="flex items-start gap-2">
-                    <TriangleAlert className="mt-0.5 size-4" />
-                    <div>
-                      Importação por CSV não está habilitada para <span className="font-semibold">MANUTENÇÃO</span>
-                      (mensal). Use o cadastro manual.
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="grid gap-3 md:grid-cols-[1fr_260px]">
                 <div className="space-y-2">
                   <Label>Arquivo CSV</Label>
@@ -388,15 +357,13 @@ export function ImportItensCsvDialog({
                     className="h-11 rounded-2xl"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (!file) return;
-                      void onFile(file);
+                      if (file) void onFile(file);
                     }}
                   />
                   <div className="text-xs text-muted-foreground">
                     {fileName ? `Selecionado: ${fileName}` : "Nenhum arquivo selecionado"}
                   </div>
                 </div>
-
                 <div className="flex flex-col justify-end gap-2">
                   <Button variant="secondary" className="rounded-2xl" onClick={downloadModel}>
                     <Download className="mr-2 size-4" />
@@ -444,11 +411,7 @@ export function ImportItensCsvDialog({
                 <div className="rounded-2xl border bg-muted/20 p-3">
                   <div className="text-xs text-muted-foreground">Validação</div>
                   <div className="mt-2 flex items-center gap-2">
-                    <Checkbox
-                      id="onlyValid"
-                      checked={onlyValid}
-                      onCheckedChange={(v) => setOnlyValid(Boolean(v))}
-                    />
+                    <Checkbox id="onlyValid" checked={onlyValid} onCheckedChange={(v) => setOnlyValid(Boolean(v))} />
                     <Label htmlFor="onlyValid" className="text-sm">
                       Importar apenas válidos
                     </Label>
@@ -478,7 +441,6 @@ export function ImportItensCsvDialog({
                       Baixar CSV de erros
                     </Button>
                   </div>
-
                   {errors.length > 0 && (
                     <div className="mt-3 max-h-40 overflow-auto rounded-2xl border border-rose-200 bg-white/60">
                       <Table>
@@ -503,9 +465,7 @@ export function ImportItensCsvDialog({
                   )}
                 </div>
               )}
-
               <Separator />
-
               <div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -516,7 +476,6 @@ export function ImportItensCsvDialog({
                     {validCount} válida(s)
                   </Badge>
                 </div>
-
                 <div className="mt-3 overflow-hidden rounded-2xl border">
                   <Table>
                     <TableHeader>
@@ -525,7 +484,9 @@ export function ImportItensCsvDialog({
                         <TableHead>Especificação</TableHead>
                         <TableHead className="w-[100px]">Unid</TableHead>
                         <TableHead className="w-[120px]">Total</TableHead>
-                        <TableHead className="w-[160px]">Valor unit.</TableHead>
+                        <TableHead className="w-[160px]">
+                          {loteTipo === "MANUTENCAO" ? "Valor unit. mensal" : "Valor unit."}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -561,7 +522,7 @@ export function ImportItensCsvDialog({
               <Button
                 variant="secondary"
                 className="rounded-2xl"
-                disabled={parsing || rows.length === 0 || hasBlockingErrors || loteTipo === "MANUTENCAO"}
+                disabled={parsing || rows.length === 0 || hasBlockingErrors}
                 onClick={() => applyImport({ closeAfter: false })}
               >
                 <FileUp className="mr-2 size-4" />
@@ -569,7 +530,7 @@ export function ImportItensCsvDialog({
               </Button>
               <Button
                 className="rounded-2xl"
-                disabled={parsing || rows.length === 0 || hasBlockingErrors || loteTipo === "MANUTENCAO"}
+                disabled={parsing || rows.length === 0 || hasBlockingErrors}
                 onClick={() => applyImport({ closeAfter: true })}
               >
                 <Save className="mr-2 size-4" />
@@ -584,10 +545,12 @@ export function ImportItensCsvDialog({
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return <div className={`rounded-2xl border bg-muted/20 p-3 ${tone ?? ""}`}>
+  return (
+    <div className={`rounded-2xl border bg-muted/20 p-3 ${tone ?? ""}`}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
-    </div>;
+    </div>
+  );
 }
 
 function downloadText(filename: string, content: string) {

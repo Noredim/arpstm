@@ -87,6 +87,7 @@ export type CsvHeaderMap = {
   unid: number;
   total: number;
   valorUnitario: number;
+  valorUnitarioMensal?: number;
 };
 
 function normHeader(h: string) {
@@ -110,19 +111,22 @@ export function mapCsvHeaders(headers: string[]): CsvHeaderMap | null {
     return undefined;
   }
 
-  // Opção A (padrão)
-  // Item;Especificacao;Unid;Total;ValorUnitario
-  // Opção B (edital)
-  // ITEM;ESPECIFICAÇÃO;UNID;TOTAL;R$ UNIT
   const item = pick(["ITEM"]);
   const especificacao = pick(["ESPECIFICACAO", "ESPECIFICACAO_"]);
   const unid = pick(["UNID", "UNIDADE", "UND"]);
   const total = pick(["TOTAL"]);
   const valorUnitario = pick(["VALORUNITARIO", "VALOR_UNITARIO", "RS_UNIT", "R_UNIT", "R$_UNIT"]);
+  const valorUnitarioMensal = pick([
+    "VALORUNITARIOMENSAL",
+    "VALOR_UNITARIO_MENSAL",
+    "RS_UNIT_MENSAL",
+    "R_UNIT_MENSAL",
+    "R$_UNIT_MENSAL",
+  ]);
 
   if (item == null || especificacao == null || unid == null || total == null || valorUnitario == null) return null;
 
-  return { item, especificacao, unid, total, valorUnitario };
+  return { item, especificacao, unid, total, valorUnitario, valorUnitarioMensal };
 }
 
 export type CsvRowMapped = {
@@ -131,6 +135,7 @@ export type CsvRowMapped = {
   unidade: string;
   total: number;
   valorUnitario: number;
+  valorUnitarioMensal?: number;
   raw: Record<string, string>;
   lineNumber: number;
 };

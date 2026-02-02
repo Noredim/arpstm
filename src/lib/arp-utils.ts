@@ -119,9 +119,15 @@ export function itemValorTotal(item: ArpItem) {
 }
 
 export function itemValorTotalMensal(item: ArpItem) {
-  if (item.kind !== "MANUTENCAO") return undefined;
-  const i = item as ArpItemManutencao;
-  return round2(i.total * (i.valorUnitarioMensal || 0));
+  if (item.kind === "MANUTENCAO") {
+    const i = item as ArpItemManutencao;
+    return round2(i.total * (i.valorUnitarioMensal || 0));
+  }
+  const i = item as ArpItemFornecimento;
+  if (i.valorUnitarioMensal) {
+    return round2(i.total * i.valorUnitarioMensal);
+  }
+  return undefined;
 }
 
 export function itemTotalAnual(item: ArpItem) {
