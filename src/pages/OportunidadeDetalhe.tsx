@@ -38,6 +38,8 @@ import { toast } from "@/hooks/use-toast";
 import type {
   Arp,
   ArpItem,
+  ArpItemFornecimento,
+  ArpItemManutencao,
   ArpLote,
   Kit,
   KitItem,
@@ -553,11 +555,12 @@ export default function OportunidadeDetalhePage() {
         return;
       }
 
-      const unit = (item as any).valorUnitario || 0;
+      const itf = item as ArpItemFornecimento;
+      const unit = itf.valorUnitario || 0;
+      const mensalUnit = itf.valorUnitarioMensal as number | undefined;
+
       const total = round2(qtd * unit);
-      const mensalUnit = (item as any).valorUnitarioMensal as number | undefined;
       const mensal = mensalUnit != null ? round2(qtd * mensalUnit) : 0;
-      const anual = mensalUnit != null ? round2(mensal * 12) : 0;
 
       switch (lote.tipoFornecimento) {
         case "FORNECIMENTO":
@@ -567,9 +570,9 @@ export default function OportunidadeDetalhePage() {
           acc.instalacao += total;
           break;
         case "COMODATO":
-          acc.comodato += total;
-          acc.comodatoMensal += mensal;
-          acc.comodatoAnual += anual;
+          const totalMensalComodato = total + mensal;
+          acc.comodatoMensal += totalMensalComodato;
+          acc.comodatoAnual += round2(totalMensalComodato * 12);
           break;
       }
     }

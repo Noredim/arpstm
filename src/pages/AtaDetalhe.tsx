@@ -32,6 +32,7 @@ import type {
   ArpItem,
   ArpItemEquipamento,
   ArpItemFornecimento,
+  ArpItemManutencao,
   ArpLote,
   TipoFornecimento,
   TipoItemManutencao,
@@ -743,16 +744,42 @@ function LoteCard({
   const { setLoteItens } = useArpStore();
 
   const totalLote = React.useMemo(() => {
-    const totalVista = lote.itens.reduce((sum, it) => sum + (itemValorTotal(it) ?? 0), 0);
-    const totalMensal = lote.itens.reduce((sum, it) => sum + (itemValorTotalMensal(it) ?? 0), 0);
+    if (lote.tipoFornecimento === "MANUTENCAO" || lote.tipoFornecimento === "COMODATO") {
+      const totalMensal = lote.itens.reduce((sum, it) => {
+        const qtd = it.total || 0;
+        let itemMensal = 0;
+        if (it.kind === "MANUTENCAO") {
+          itemMensal = qtd * ((it as ArpItemManutencao).valorUnitarioMensal || 0);
+        } else {
+          itemMensal = qtd * ((it as ArpItemFornecimento).valorUnitario || 0);
+          itemMensal += qtd * ((it as ArpItemFornecimento).valorUnitarioMensal || 0);
+        }
+        return sum + itemMensal;
+      }, 0);
 
-    if (lote.tipoFornecimento === "MANUTENCAO") {
-      return { label: `${moneyBRL(totalMensal)} /mês`, raw: totalMensal };
+      const roundedTotalMensal = round2(totalMensal);
+      const totalAnual = round2(roundedTotalMensal * 12);
+
+      return {
+        label: `${moneyBRL(roundedTotalMensal)} /mês`,
+        secondaryLabel: `Anual: ${moneyBRL(totalAnual)}`,
+        raw: roundedTotalMensal,
+      };
     }
-    if (totalMensal > 0) {
-      return { label: `${moneyBRL(totalVista)} + ${moneyBRL(totalMensal)} /mês`, raw: totalVista };
+
+    // FORNECIMENTO, INSTALACAO
+    const totalVista = lote.itens.reduce((sum, it) => sum + (itemValorTotal(it) ?? 0), 0);
+    const totalMensalOpcional = lote.itens.reduce((sum, it) => sum + (itemValorTotalMensal(it) ?? 0), 0);
+
+    if (totalMensalOpcional > 0) {
+      return {
+        label: `${moneyBRL(totalVista)}`,
+        secondaryLabel: `+ ${moneyBRL(totalMensalOpcional)} /mês`,
+        raw: totalVista,
+      };
     }
-    return { label: moneyBRL(totalVista), raw: totalVista };
+
+    return { label: moneyBRL(totalVista), secondaryLabel: null, raw: totalVista };
   }, [lote.itens, lote.tipoFornecimento]);
 
   const itensOrdenados = React.useMemo(() => {
@@ -781,7 +808,10 @@ function LoteCard({
                   <Badge variant="secondary" className="rounded-full">
                     {lote.itens.length} item(ns)
                   </Badge>
-                  <Badge className="rounded-full bg-indigo-600 text-white">Total: {totalLote.label}</Badge>
+                  <Badge className="rounded-full bg-indigo-600 text-white">
+                    Total: {totalLote.label}
+                    {totalLote.secondaryLabel && <span className="ml-1 opacity-80">{totalLote.secondaryLabel}</span>}
+                  </Badge>
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   Clique para {open ? "recolher" : "expandir"}.
@@ -840,9 +870,18 @@ function LoteCard({
                     let valorPrincipal: string;
                     let valorSecundario: string;
 
-                    if (it.kind === "MANUTENCAO") {
-                      valorPrincipal = `${moneyBRL(itemValorTotalMensal(it))} /m`;
-                      valorSecundario = `Anual: ${moneyBRL(itemTotalAnual(it))}`;
+                    if (lote.tipoFornecimento === "MANUTENCAO" || lote.tipoFornecimento === "COMODATO") {
+                      const qtd = it.total || 0;
+                      let itemMensal = 0;
+                      if (it.kind === "MANUTENCAO") {
+                        itemMensal = qtd * ((it as ArpItemManutencao).valorUnitarioMensal || 0);
+                      } else {
+                        itemMensal = qtd * ((it as ArpItemFornecimento).valorUnitario || 0);
+                        itemMensal += qtd * ((it as ArpItemFornecimento).valorUnitarioMensal || 0);
+                      }
+                      const roundedMensal = round2(itemMensal);
+                      valorPrincipal = `${moneyBRL(roundedMensal)} /m`;
+                      valorSecundario = `Anual: ${moneyBRL(round2(roundedMensal * 12))}`;
                     } else {
                       const itf = it as ArpItemFornecimento;
                       valorPrincipal = moneyBRL(itemValorTotal(itf));
@@ -899,7 +938,12 @@ function LoteCard({
 
           <div className="mt-3 flex items-center justify-end rounded-2xl border bg-muted/20 px-4 py-3 text-sm">
             <span className="text-muted-foreground">Total do lote:&nbsp;</span>
-            <span className="font-semibold tabular-nums">{totalLote.label}</span>
+            <span className="font-semibold tabular-nums">
+              {totalLote.label}
+              {totalLote.secondaryLabel && (
+                <span className="ml-1 font-normal text-muted-foreground">{totalLote.secondaryLabel}</span>
+              )}
+            </span>
           </div>
         </CollapsibleContent>
       </Collapsible>

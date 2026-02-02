@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import type { ArpItem, ArpLote, KitItem, TipoFornecimento } from "@/lib/arp-types";
+import type { ArpItem, ArpItemFornecimento, ArpItemManutencao, ArpLote, KitItem, TipoFornecimento } from "@/lib/arp-types";
 import { dateTimeBR, getNomeComercial, moneyBRL, round2, uid } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
 import { ArrowLeft, Boxes, CalendarClock, HardHat, Package, Plus, Trash2 } from "lucide-react";
@@ -47,13 +47,22 @@ function tipoBadge(tipo: TipoFornecimento) {
 }
 
 function unitForKit(item: ArpItem, lote: ArpLote | undefined) {
-  if (!item) return { unit: 0, mensal: undefined as number | undefined };
-  if (item.kind === "MANUTENCAO") {
-    return { unit: 0, mensal: item.valorUnitarioMensal };
+  if (!item || !lote) return { unit: 0, mensal: 0 };
+
+  const itf = item as ArpItemFornecimento;
+  const itm = item as ArpItemManutencao;
+
+  if (lote.tipoFornecimento === "MANUTENCAO") {
+    return { unit: 0, mensal: itm.valorUnitarioMensal || 0 };
   }
-  // COMODATO pode ter componente mensal opcional
-  const mensal = (item as any).valorUnitarioMensal as number | undefined;
-  return { unit: (item as any).valorUnitario || 0, mensal: lote?.tipoFornecimento === "COMODATO" ? mensal : undefined };
+
+  if (lote.tipoFornecimento === "COMODATO") {
+    const totalMensalUnit = (itf.valorUnitario || 0) + (itf.valorUnitarioMensal || 0);
+    return { unit: 0, mensal: totalMensalUnit };
+  }
+
+  // FORNECIMENTO, INSTALACAO
+  return { unit: itf.valorUnitario || 0, mensal: itf.valorUnitarioMensal || 0 };
 }
 
 export default function KitDetalhePage() {
@@ -266,10 +275,10 @@ export default function KitDetalhePage() {
                         const item = itensById[row.arpItemId];
                         const qtd = Number(row.quantidade) || 0;
 
-                        const { unit, mensal } = item && lote ? unitForKit(item, lote) : { unit: 0, mensal: undefined };
+                        const { unit, mensal } = item && lote ? unitForKit(item, lote) : { unit: 0, mensal: 0 };
                         const total = round2(qtd * unit);
-                        const totalMensal = mensal != null ? round2(qtd * mensal) : undefined;
-                        const totalAnual = totalMensal != null ? round2(totalMensal * 12) : undefined;
+                        const totalMensal = mensal != null ? round2(qtd * mensal) : 0;
+                        const totalAnual = totalMensal != null ? round2(totalMensal * 12) : 0;
 
                         return (
                           <TableRow key={row.id} className="hover:bg-muted/30">
