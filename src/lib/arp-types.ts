@@ -150,6 +150,7 @@ export type Oportunidade = {
   codigo: number; // sequencial
   clienteId: string;
   arpId: string;
+  status?: string; // ex.: GANHAMOS
   itens: OportunidadeItem[];
   kits?: OportunidadeKit[];
   kitItens?: OportunidadeKitItem[];

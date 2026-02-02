@@ -19,6 +19,14 @@ import type {
 } from "@/lib/arp-types";
 import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
 import { syncIbgeLocalidades } from "@/lib/ibge-sync";
+import {
+  computeUtilizadoPorItem,
+  getOpportunityItemTotals,
+  getSaldoBaseByTipo,
+  isStatusGanhamos,
+  normalizeOportunidadeStatus,
+  type SaldoTipo,
+} from "@/lib/saldo-helpers";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -139,10 +147,12 @@ function loadInitial(): ArpState {
       kitItems: (parsed as any).kitItems ?? [],
       oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
         ...o,
+        status: o.status ?? "ABERTA",
         itens: o.itens ?? [],
         kits: o.kits ?? [],
         kitItens: o.kitItens ?? [],
       })),
+
       oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
     };
   } catch {
@@ -288,7 +298,103 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const api = React.useMemo<ArpStore>(() => {
+    const SALDO_ERRO_MSG = "Saldo insuficiente para este item conforme regras da ATA de Registro de Preços.";
+
+    function tipoSaldoParaCliente(arp: Arp, clienteId: string): SaldoTipo {
+      return (arp.participantes ?? []).includes(clienteId) ? "PARTICIPANTES" : "CARONA";
+    }
+
+    function assertSaldoDisponivel(params: {
+      oportunidadeId: string;
+      clienteId: string;
+      arpId: string;
+      loteId: string;
+      arpItemId: string;
+      quantidade: number;
+      excludeItemId?: string;
+    }) {
+      const { oportunidadeId, clienteId, arpId, loteId, arpItemId, quantidade, excludeItemId } = params;
+      const arp = state.arps.find((a) => a.id === arpId);
+      if (!arp) return;
+      const lote = arp.lotes.find((l) => l.id === loteId);
+      if (!lote) return;
+      const item = lote.itens.find((it) => it.id === arpItemId);
+      if (!item) return;
+
+      const tipoSaldo = tipoSaldoParaCliente(arp, clienteId);
+      const participantesSet = new Set(arp.participantes ?? []);
+
+      const usadosPorOutros = computeUtilizadoPorItem({
+        oportunidades: state.oportunidades,
+        arpId: arp.id,
+        loteId,
+        itemId: arpItemId,
+        tipoSaldo,
+        participantesSet,
+        excludeOportunidadeId: oportunidadeId,
+      });
+
+      const oportunidade = state.oportunidades.find((o) => o.id === oportunidadeId);
+      const breakdown = getOpportunityItemTotals({
+        oportunidade,
+        loteId,
+        itemId: arpItemId,
+        excludeItemId,
+      });
+
+      const projetado = usadosPorOutros + breakdown.total + quantidade;
+      const base = getSaldoBaseByTipo(item, tipoSaldo);
+
+      if (projetado > base + 1e-9) {
+        throw new Error(SALDO_ERRO_MSG);
+      }
+    }
+
+    function validateSaldoParaOportunidade(oportunidade: Oportunidade) {
+      const arp = state.arps.find((a) => a.id === oportunidade.arpId);
+      if (!arp) return;
+      const tipoSaldo = tipoSaldoParaCliente(arp, oportunidade.clienteId);
+      const participantesSet = new Set(arp.participantes ?? []);
+
+      const combos = new Map<string, { loteId: string; itemId: string; quantidade: number }>();
+
+      for (const item of oportunidade.itens ?? []) {
+        const key = `${item.loteId}:${item.arpItemId}`;
+        const entry = combos.get(key) ?? { loteId: item.loteId, itemId: item.arpItemId, quantidade: 0 };
+        entry.quantidade += Number(item.quantidade) || 0;
+        combos.set(key, entry);
+      }
+
+      for (const kitItem of oportunidade.kitItens ?? []) {
+        const key = `${kitItem.loteId}:${kitItem.arpItemId}`;
+        const entry = combos.get(key) ?? { loteId: kitItem.loteId, itemId: kitItem.arpItemId, quantidade: 0 };
+        entry.quantidade += Number(kitItem.quantidadeTotal) || 0;
+        combos.set(key, entry);
+      }
+
+      for (const combo of combos.values()) {
+        const lote = arp.lotes.find((l) => l.id === combo.loteId);
+        if (!lote) continue;
+        const item = lote.itens.find((it) => it.id === combo.itemId);
+        if (!item) continue;
+        const base = getSaldoBaseByTipo(item, tipoSaldo);
+        const usados = computeUtilizadoPorItem({
+          oportunidades: state.oportunidades,
+          arpId: arp.id,
+          loteId: combo.loteId,
+          itemId: combo.itemId,
+          tipoSaldo,
+          participantesSet,
+          excludeOportunidadeId: oportunidade.id,
+        });
+        if (usados + combo.quantidade > base + 1e-9) {
+          throw new Error(SALDO_ERRO_MSG);
+        }
+      }
+    }
+
     function currentUser(): Usuario {
+
       const found = state.usuarios.find((u) => u.email.toLowerCase() === state.currentUserEmail.toLowerCase());
       return (
         found ??
@@ -974,10 +1080,14 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         const oportunidade: Oportunidade = {
           id: uid("opp"),
           codigo: Math.min(9999, Math.max(1, state.oportunidadeSeq + 1)),
+          clienteId: data.clienteId,
+          arpId: data.arpId,
+          status: data.status ?? "ABERTA",
           itens: [],
           kits: [],
           kitItens: [],
           ...data,
+          status: data.status ?? "ABERTA",
         };
         setState((s) => ({
           ...s,
@@ -986,17 +1096,35 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
         return oportunidade;
       },
+
       updateOportunidade: (id, patch) => {
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, ...patch } : o)),
-        }));
+        setState((s) => {
+          const atual = s.oportunidades.find((o) => o.id === id);
+          if (!atual) return s;
+          const nextStatus = patch.status ?? atual.status;
+          if (normalizeOportunidadeStatus(nextStatus) === "GANHAMOS") {
+            const projetada: Oportunidade = { ...atual, ...patch, status: nextStatus } as Oportunidade;
+            validateSaldoParaOportunidade(projetada);
+          }
+          return {
+            ...s,
+            oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, ...patch, status: nextStatus } : o)),
+          };
+        });
       },
+
       setOportunidadeItens: (id, itens) => {
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
-        }));
+        setState((s) => {
+          const oportunidade = s.oportunidades.find((o) => o.id === id);
+          if (!oportunidade) return s;
+          if (isStatusGanhamos(oportunidade.status)) {
+            validateSaldoParaOportunidade({ ...oportunidade, itens });
+          }
+          return {
+            ...s,
+            oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
+          };
+        });
       },
 
       addOportunidadeKit: (oportunidadeId, data) => {
@@ -1011,12 +1139,17 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             if (o.id !== oportunidadeId) return o;
             const nextKits = [...(o.kits ?? []), ok];
             const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
-            return { ...o, kits: nextKits, kitItens };
+            const nextOpp = { ...o, kits: nextKits, kitItens };
+            if (isStatusGanhamos(o.status)) {
+              validateSaldoParaOportunidade(nextOpp);
+            }
+            return nextOpp;
           });
           return { ...s, oportunidades };
         });
         return ok;
       },
+
       updateOportunidadeKit: (oportunidadeId, oportunidadeKitId, patch) => {
         setState((s) => {
           const oportunidades = s.oportunidades.map((o) => {
@@ -1057,6 +1190,20 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       addOportunidadeItem: (oportunidadeId, data) => {
+        const oportunidade = state.oportunidades.find((o) => o.id === oportunidadeId);
+        if (!oportunidade) throw new Error("Oportunidade não encontrada.");
+        const quantidade = Number(data.quantidade) || 0;
+        if (isStatusGanhamos(oportunidade.status)) {
+          assertSaldoDisponivel({
+            oportunidadeId,
+            clienteId: oportunidade.clienteId,
+            arpId: oportunidade.arpId,
+            loteId: data.loteId,
+            arpItemId: data.arpItemId,
+            quantidade,
+          });
+        }
+
         const oi: OportunidadeItem = { id: uid("oppi"), oportunidadeId, ...data };
         setState((s) => ({
           ...s,
@@ -1066,15 +1213,41 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
         return oi;
       },
+
       updateOportunidadeItem: (oportunidadeId, itemId, patch) => {
+        const oportunidade = state.oportunidades.find((o) => o.id === oportunidadeId);
+        if (!oportunidade) throw new Error("Oportunidade não encontrada.");
+        const atual = oportunidade.itens.find((i) => i.id === itemId);
+        if (!atual) throw new Error("Item não encontrado na oportunidade.");
+
+        const proximoLoteId = patch.loteId ?? atual.loteId;
+        const proximoArpItemId = patch.arpItemId ?? atual.arpItemId;
+        const proximaQuantidade = Number(patch.quantidade ?? atual.quantidade) || 0;
+
+        if (isStatusGanhamos(oportunidade.status)) {
+          assertSaldoDisponivel({
+            oportunidadeId,
+            clienteId: oportunidade.clienteId,
+            arpId: oportunidade.arpId,
+            loteId: proximoLoteId,
+            arpItemId: proximoArpItemId,
+            quantidade: proximaQuantidade,
+            excludeItemId: itemId,
+          });
+        }
+
         setState((s) => ({
           ...s,
           oportunidades: s.oportunidades.map((o) => {
             if (o.id !== oportunidadeId) return o;
-            return { ...o, itens: o.itens.map((i) => (i.id === itemId ? { ...i, ...patch } : i)) };
+            return {
+              ...o,
+              itens: o.itens.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
+            };
           }),
         }));
       },
+
       deleteOportunidadeItem: (oportunidadeId, itemId) => {
         setState((s) => ({
           ...s,
