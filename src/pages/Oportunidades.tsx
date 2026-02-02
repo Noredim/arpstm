@@ -24,23 +24,21 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import type { Arp, Cliente, Oportunidade } from "@/lib/arp-types";
-import { clienteLabel, getArpStatus, getTipoAdesao, isArpVigente } from "@/lib/arp-utils";
+import { getArpStatus, getTipoAdesao, isArpVigente } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
 import { ExternalLink, Plus, Trash2, Loader2, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
-// --- SIMULAÇÃO DE FETCH (Integridade de Dados) ---
-// Em produção, mova para um arquivo de serviço (ex: src/services/clientes.ts)
+// --- SERVIÇOS DE DADOS (DATA FETCHING) ---
+
 const fetchClientes = async (): Promise<Cliente[]> => {
-    // Simula delay de rede
     return new Promise((resolve) => {
         setTimeout(() => {
-            // Tenta pegar do store ou retorna mock se vazio para garantir UI funcional
             const storeState = useArpStore.getState();
             if (storeState.clientes.length > 0) {
                 resolve(storeState.clientes);
             } else {
-                // Fallback Mock se a store estiver vazia
+                // Mock fallback para visualização caso store esteja vazia
                 resolve([
                     { id: "1", nome: "Prefeitura Municipal de Exemplo", cnpj: "00.000.000/0001-00", uf: "SP", cidade: "São Paulo" },
                     { id: "2", nome: "Empresa Pública de Tecnologia", cnpj: "11.111.111/0001-11", uf: "RJ", cidade: "Rio de Janeiro" }
@@ -57,22 +55,21 @@ const fetchArps = async (): Promise<Arp[]> => {
     });
 };
 
+// --- PÁGINA PRINCIPAL ---
+
 export default function OportunidadesPage() {
-  // 1. ZONA DE HOOKS (Ordenados e Incondicionais)
   const { state, deleteOportunidade } = useArpStore();
   const navigate = useNavigate();
   
-  // Hooks de Estado Local
+  // Estados Locais
   const [q, setQ] = React.useState("");
   const [open, setOpen] = React.useState(false);
-  const [clienteId, setClienteId] = React.useState("");
-  const [arpId, setArpId] = React.useState("");
+  const [arpId, setArpId] = React.useState(""); // Apenas ArpId é necessário no pré-cadastro agora
 
-  // Data Fetching (Garante dados frescos para o Modal)
+  // Queries (Mantidas para a Tabela e Seleção de ATA)
   const { data: clientesData, isLoading: isLoadingClientes, refetch: refetchClientes } = useQuery({
     queryKey: ["clientes"],
     queryFn: fetchClientes,
-    // Sincroniza dados iniciais com a store se disponível
     initialData: state.clientes.length > 0 ? state.clientes : undefined,
   });
 
@@ -82,10 +79,10 @@ export default function OportunidadesPage() {
     initialData: state.arps,
   });
 
-  // Memos de Processamento
   const clientes = clientesData || [];
   const arps = arpsData || [];
 
+  // Indexação para performance da tabela
   const clientesById = React.useMemo(
     () => Object.fromEntries(clientes.map((c) => [c.id, c])),
     [clientes]
@@ -98,6 +95,7 @@ export default function OportunidadesPage() {
 
   const vigentes = React.useMemo(() => arps.filter(isArpVigente), [arps]);
 
+  // Filtro da Lista
   const list = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return state.oportunidades;
@@ -105,70 +103,56 @@ export default function OportunidadesPage() {
     return state.oportunidades.filter((o) => {
       const a = arpsById[o.arpId];
       const c = clientesById[o.clienteId];
-      // Busca segura com Optional Chaining para evitar crash se id não existir
       return [o.codigo.toString(), a?.nomeAta, c?.nome]
         .some((v) => (v ?? "").toLowerCase().includes(query));
     });
   }, [q, state.oportunidades, clientesById, arpsById]);
 
-  // Handlers (Ações)
-  function openCreate() {
-    // Tenta atualizar a lista de clientes ao abrir o modal para garantir
-    if (clientes.length === 0) {
-        refetchClientes();
-    }
+  // --- ACTIONS ---
 
-    // Validações de Pré-condição
-    if (clientes.length === 0 && !isLoadingClientes) {
-      toast({ title: "Nenhum cliente disponível", description: "Verifique o cadastro de clientes.", variant: "destructive" });
-      return; // Não bloqueia totalmente, permite re-tentar
-    }
-    
+  function openCreate() {
+    // Validação de Integridade: Não é possível criar oportunidade sem uma ATA vigente
     if (vigentes.length === 0) {
       toast({
         title: "Nenhuma ATA vigente",
-        description: "É necessário uma ATA com validade ativa para criar oportunidade.",
+        description: "É necessário haver uma ATA com validade ativa para criar oportunidades.",
         variant: "destructive",
       });
-      // Permite abrir mesmo assim em alguns casos? Pela regra de ouro, defesa ativa:
       return;
     }
 
-    // Seleção automática inteligente
-    setClienteId(clientes[0]?.id ?? "");
+    // Pré-seleção inteligente da primeira ATA vigente
     setArpId(vigentes[0]?.id ?? "");
     setOpen(true);
   }
 
   function goToDraft() {
-    if (!clienteId) {
-        toast({ title: "Selecione um cliente", variant: "destructive" });
-        return;
-    }
     if (!arpId) {
         toast({ title: "Selecione uma ATA", variant: "destructive" });
         return;
     }
     setOpen(false);
-    navigate(`/oportunidades/nova?clienteId=${encodeURIComponent(clienteId)}&arpId=${encodeURIComponent(arpId)}`);
+    // Navega apenas com o ID da ATA. O Cliente será selecionado na próxima tela.
+    navigate(`/oportunidades/nova?arpId=${encodeURIComponent(arpId)}`);
   }
 
   function remove(o: Oportunidade) {
-    // Sugestão RBAC: Envolver isso em verificação de permissão futura
     if (!confirm("Tem certeza que deseja remover esta oportunidade?")) return;
     deleteOportunidade(o.id);
     toast({ title: "Oportunidade removida", description: `Código ${o.codigo}` });
   }
 
-  // Renderização
+  // --- RENDERIZAÇÃO ---
+
   return (
     <AppLayout>
       <div className="grid gap-4">
+        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="text-lg font-semibold tracking-tight">Oportunidades de adesão</div>
             <div className="text-sm text-muted-foreground">
-              Gerencie as oportunidades e vínculos com clientes.
+              Gerencie as oportunidades de negócio.
             </div>
           </div>
           <Button className="rounded-2xl" onClick={openCreate}>
@@ -177,6 +161,7 @@ export default function OportunidadesPage() {
           </Button>
         </div>
 
+        {/* Filtros e Tabela */}
         <Card className="rounded-3xl border p-4">
           <div className="flex items-center gap-2 mb-4">
               <Input
@@ -226,7 +211,7 @@ export default function OportunidadesPage() {
                                     {cliente.cidade && <span className="text-xs text-muted-foreground">{cliente.cidade}/{cliente.uf}</span>}
                                 </div>
                             ) : (
-                                <span className="text-muted-foreground italic">Cliente não encontrado ({o.clienteId})</span>
+                                <span className="text-muted-foreground italic text-xs">A definir</span>
                             )}
                         </TableCell>
                         <TableCell>
@@ -287,84 +272,45 @@ export default function OportunidadesPage() {
       <CreateOportunidadeDialog
         open={open}
         onOpenChange={setOpen}
-        clientes={clientes}
         vigentes={vigentes}
-        clienteId={clienteId}
         arpId={arpId}
-        onClienteId={setClienteId}
         onArpId={setArpId}
         onCreate={goToDraft}
-        isLoading={isLoadingClientes}
       />
     </AppLayout>
   );
 }
 
-// --- SUB-COMPONENTE: DIALOG ---
+// --- SUB-COMPONENTE: DIALOG (Sem Seleção de Cliente) ---
 
 function CreateOportunidadeDialog({
   open,
   onOpenChange,
-  clientes,
   vigentes,
-  clienteId,
   arpId,
-  onClienteId,
   onArpId,
   onCreate,
-  isLoading
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  clientes: Cliente[];
   vigentes: Arp[];
-  clienteId: string;
   arpId: string;
-  onClienteId: (v: string) => void;
   onArpId: (v: string) => void;
   onCreate: () => void;
-  isLoading: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl rounded-3xl">
+      <DialogContent className="max-w-md rounded-3xl">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold tracking-tight">Iniciar Nova Oportunidade</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Cliente</Label>
-            <div className="relative">
-                <Select value={clienteId} onValueChange={onClienteId} disabled={isLoading || clientes.length === 0}>
-                <SelectTrigger className="h-12 rounded-2xl bg-muted/20">
-                    <SelectValue placeholder={isLoading ? "Carregando clientes..." : "Selecione o cliente contratante"} />
-                </SelectTrigger>
-                <SelectContent>
-                    {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="cursor-pointer">
-                        <span className="font-medium">{c.nome}</span>
-                        {c.cnpj && <span className="ml-2 text-xs text-muted-foreground">({c.cnpj})</span>}
-                    </SelectItem>
-                    ))}
-                </SelectContent>
-                </Select>
-                {isLoading && (
-                    <div className="absolute right-10 top-3.5">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                )}
-            </div>
-            {clientes.length === 0 && !isLoading && (
-                <p className="text-xs text-destructive">Nenhum cliente encontrado. Cadastre um cliente primeiro.</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
             <Label className="text-sm font-medium">ATA de Registro de Preço (Vigente)</Label>
             <Select value={arpId} onValueChange={onArpId} disabled={vigentes.length === 0}>
               <SelectTrigger className="h-12 rounded-2xl bg-muted/20">
-                <SelectValue placeholder="Selecione a ATA vinculada" />
+                <SelectValue placeholder="Selecione a ATA de origem" />
               </SelectTrigger>
               <SelectContent>
                 {vigentes.map((a) => (
@@ -377,6 +323,9 @@ function CreateOportunidadeDialog({
             {vigentes.length === 0 && (
                 <p className="text-xs text-destructive">Nenhuma ATA vigente encontrada.</p>
             )}
+            <p className="text-xs text-muted-foreground">
+                O vínculo com o Cliente Contratante será realizado na próxima etapa.
+            </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-end mt-2">
@@ -386,9 +335,9 @@ function CreateOportunidadeDialog({
             <Button 
                 className="rounded-2xl px-6" 
                 onClick={onCreate}
-                disabled={!clienteId || !arpId}
+                disabled={!arpId}
             >
-              Criar Rascunho
+              Continuar
             </Button>
           </div>
         </div>
