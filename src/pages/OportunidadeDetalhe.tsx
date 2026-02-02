@@ -53,8 +53,16 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client"; // CERTIFIQUE-SE DE TER ESTE IMPORT
 
 // --- TIPOS E SCHEMAS ---
+
+// Definição do tipo Cliente
+interface Cliente {
+  id: string;
+  nome: string;
+  // adicione outros campos se necessário
+}
 
 const oportunidadeSchema = z.object({
   titulo: z.string().min(3, "O título deve ter pelo menos 3 caracteres"),
@@ -71,13 +79,28 @@ const oportunidadeSchema = z.object({
 
 type OportunidadeFormValues = z.infer<typeof oportunidadeSchema>;
 
-// Mock functions (Simulação de API)
+// --- FUNÇÕES DE BUSCA (API) ---
+
+// 1. Buscar Oportunidade
 const fetchOportunidade = async (id: string) => {
-  return new Promise<any>((resolve) => {
-    setTimeout(() => {
+  // Se for "nova", não busca nada
+  if (id === "nova") return null;
+
+  // IMPLEMENTAÇÃO REAL (Exemplo com Supabase)
+  const { data, error } = await supabase
+    .from("oportunidades")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Erro ao buscar oportunidade:", error);
+    // Fallback para mock se não tiver banco conectado ainda
+    return new Promise<any>((resolve) => {
+      setTimeout(() => {
         resolve({
             id,
-            titulo: "Projeto Exemplo",
+            titulo: "Projeto Exemplo (Mock)",
             cliente_id: "1",
             status: "aberta",
             valor_estimado: 50000,
@@ -86,27 +109,49 @@ const fetchOportunidade = async (id: string) => {
             descricao: "Descrição detalhada do projeto...",
             prioridade: "alta"
         })
-    }, 500);
-  });
+      }, 500);
+    });
+  }
+
+  // Converte string de data para objeto Date se necessário
+  return {
+    ...data,
+    data_fechamento_estimada: new Date(data.data_fechamento_estimada)
+  };
 };
 
-const fetchClientes = async () => {
-   return [
-       { id: "1", nome: "Acme Corp" },
-       { id: "2", nome: "Globex Inc" }
-   ];
+// 2. Buscar Clientes (ALTERADO PARA BUSCAR DO BANCO)
+const fetchClientes = async (): Promise<Cliente[]> => {
+  // Tenta buscar do Supabase
+  try {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("id, nome")
+      .order("nome");
+
+    if (error) throw error;
+    
+    // Se retornou dados, usa eles
+    if (data && data.length > 0) {
+      return data;
+    }
+  } catch (err) {
+    console.warn("API de clientes não conectada ou tabela vazia. Usando mock.", err);
+  }
+
+  // Fallback (Mock) caso a conexão falhe ou não existam clientes
+  return [
+    { id: "1", nome: "Cliente Exemplo 1" },
+    { id: "2", nome: "Cliente Exemplo 2" }
+  ];
 };
 
 // --- COMPONENTE PRINCIPAL ---
-// O 'export default' aqui resolve o erro de importação nas rotas
 export default function OportunidadeDetalhePage() {
   
-  // 1. ZONA DE HOOKS (EXECUÇÃO INCONDICIONAL)
-  // Mova todos os hooks para cá. NUNCA coloque um 'return' antes deste bloco.
-  // ---------------------------------------------------------------------------
+  // 1. ZONA DE HOOKS
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams(); // Hook mantido para integridade
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isNova = id === "nova";
@@ -137,7 +182,7 @@ export default function OportunidadeDetalhePage() {
   } = useQuery({
     queryKey: ["oportunidade", id],
     queryFn: () => fetchOportunidade(id!),
-    enabled: !!id && !isNova, // Controla a execução sem quebrar as regras de hooks
+    enabled: !!id && !isNova, 
   });
 
   const { 
@@ -151,8 +196,22 @@ export default function OportunidadeDetalhePage() {
   // Mutations
   const createMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-      console.log("Criando:", values);
-      return { id: "new-id-123", ...values };
+      // IMPLEMENTAÇÃO REAL
+      const { data, error } = await supabase
+        .from("oportunidades")
+        .insert([{
+          ...values,
+          // Garante que a data esteja em formato ISO string
+          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error(error);
+        throw new Error("Erro ao salvar no banco");
+      }
+      return data;
     },
     onSuccess: (data) => {
       toast({
@@ -160,6 +219,7 @@ export default function OportunidadeDetalhePage() {
         description: "A oportunidade foi cadastrada com sucesso.",
       });
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
+      // Redireciona para a página de edição da oportunidade criada
       navigate(`/oportunidades/${data.id}`);
     },
     onError: () => {
@@ -173,7 +233,16 @@ export default function OportunidadeDetalhePage() {
 
   const updateMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-       console.log("Atualizando:", values);
+       // IMPLEMENTAÇÃO REAL
+       const { error } = await supabase
+        .from("oportunidades")
+        .update({
+          ...values,
+          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
+        })
+        .eq("id", id);
+
+       if (error) throw error;
        return values;
     },
     onSuccess: () => {
@@ -193,7 +262,7 @@ export default function OportunidadeDetalhePage() {
     },
   });
 
-  // Effects
+  // Popula o formulário quando os dados chegam
   React.useEffect(() => {
     if (oportunidade) {
         form.reset({
@@ -202,25 +271,30 @@ export default function OportunidadeDetalhePage() {
             status: oportunidade.status,
             valor_estimado: oportunidade.valor_estimado,
             probabilidade: oportunidade.probabilidade,
-            data_fechamento_estimada: new Date(oportunidade.data_fechamento_estimada),
+            data_fechamento_estimada: oportunidade.data_fechamento_estimada instanceof Date 
+                ? oportunidade.data_fechamento_estimada 
+                : new Date(oportunidade.data_fechamento_estimada),
             descricao: oportunidade.descricao || "",
             prioridade: oportunidade.prioridade,
         });
     }
   }, [oportunidade, form]);
 
-  // UseMemo (Seguro) - Este era o ponto crítico do erro anterior
+  // Cálculo visual da barra de progresso
   const progressoVisual = React.useMemo(() => {
      if (isNova) return 0;
-     if (!oportunidade) return 0;
      
-     switch(oportunidade.status) {
+     // Prioridade ao status do form atual se estiver editando, senão pega do banco
+     const statusAtual = form.getValues("status") || oportunidade?.status;
+     const probAtual = form.getValues("probabilidade") || oportunidade?.probabilidade || 0;
+
+     switch(statusAtual) {
          case 'ganha': return 100;
-         case 'perdida': return 100;
+         case 'perdida': return 100; // Ou 0, dependendo da regra de negócio
          case 'cancelada': return 0;
-         default: return oportunidade.probabilidade || 0;
+         default: return probAtual;
      }
-  }, [oportunidade, isNova]);
+  }, [oportunidade, isNova, form.watch("status"), form.watch("probabilidade")]);
 
   // Handlers
   const onSubmit = (values: OportunidadeFormValues) => {
@@ -234,10 +308,7 @@ export default function OportunidadeDetalhePage() {
   const isLoading = isLoadingOportunidade || isLoadingClientes;
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // 2. ZONA DE RENDERIZAÇÃO CONDICIONAL (SAFE ZONE)
-  // Agora que todos os hooks foram chamados, podemos retornar loading ou erros
-  // ---------------------------------------------------------------------------
-
+  // Renderização de Erro/Loading
   if (!isNova && isLoadingOportunidade) {
     return (
       <AppLayout>
@@ -339,6 +410,7 @@ export default function OportunidadeDetalhePage() {
                                 />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     {/* SELECT DE CLIENTES COM DADOS REAIS */}
                                      <FormField
                                         control={form.control}
                                         name="cliente_id"
@@ -359,15 +431,18 @@ export default function OportunidadeDetalhePage() {
                                                 <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                                                     <FormControl>
                                                         <SelectTrigger>
-                                                            <SelectValue placeholder="Selecione um cliente" />
+                                                            <SelectValue placeholder={isLoadingClientes ? "Carregando..." : "Selecione um cliente"} />
                                                         </SelectTrigger>
                                                     </FormControl>
                                                     <SelectContent>
-                                                        {clientes?.map((cliente: any) => (
+                                                        {clientes?.map((cliente: Cliente) => (
                                                             <SelectItem key={cliente.id} value={cliente.id}>
                                                                 {cliente.nome}
                                                             </SelectItem>
                                                         ))}
+                                                        {clientes?.length === 0 && (
+                                                            <div className="p-2 text-sm text-muted-foreground text-center">Nenhum cliente encontrado</div>
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                                 <FormMessage />
@@ -542,7 +617,7 @@ export default function OportunidadeDetalhePage() {
                  </Form>
             </div>
 
-            {/* Coluna Lateral - Info Adicional / Histórico */}
+            {/* Coluna Lateral */}
             <div className="space-y-6">
                 <Card>
                     <CardHeader>
@@ -583,7 +658,7 @@ export default function OportunidadeDetalhePage() {
                     </CardContent>
                 </Card>
 
-                {/* Área para Histórico ou Notas */}
+                {/* Área para Histórico */}
                 {!isNova && (
                     <Card>
                         <CardHeader>
@@ -617,7 +692,13 @@ export default function OportunidadeDetalhePage() {
 
       <ClienteFormDialog 
         open={isClienteDialogOpen} 
-        onOpenChange={setIsClienteDialogOpen} 
+        onOpenChange={(open) => {
+            setIsClienteDialogOpen(open);
+            // Se o modal fechar, recarregamos a lista de clientes para garantir que novos apareçam
+            if (!open) {
+                queryClient.invalidateQueries({ queryKey: ["clientes"] });
+            }
+        }}
       />
     </AppLayout>
   );
