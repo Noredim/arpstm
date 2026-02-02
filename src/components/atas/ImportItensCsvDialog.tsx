@@ -1,17 +1,15 @@
 import * as React from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -43,8 +41,9 @@ import {
   parseCsvLine,
   parseLocaleNumber,
 } from "@/lib/csv-import";
+import { compareNumeroItem, moneyBRL, round2 } from "@/lib/arp-utils";
 import { uid } from "@/lib/arp-utils";
-import { Download, FileUp, TriangleAlert } from "lucide-react";
+import { Download, FileUp, Save, TriangleAlert } from "lucide-react";
 
 type ImportMode = "UPSERT" | "INSERT_ONLY" | "REPLACE_ALL";
 
@@ -229,7 +228,7 @@ export function ImportItensCsvDialog({
     }
   }
 
-  function applyImport() {
+  function applyImport(params: { closeAfter: boolean }) {
     if (loteTipo === "MANUTENCAO") {
       toast({
         title: "Importação não disponível",
@@ -278,13 +277,15 @@ export function ImportItensCsvDialog({
         } as any;
       });
 
+      next.sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem));
+
       const stats: ImportStats = { inserted, updated, ignored };
       onApply(next, stats);
       toast({
         title: "Importação concluída",
         description: `${inserted} inseridos, ${updated} atualizados, ${ignored} ignorados.`,
       });
-      onOpenChange(false);
+      if (params.closeAfter) onOpenChange(false);
       return;
     }
 
@@ -333,8 +334,8 @@ export function ImportItensCsvDialog({
       }
     }
 
-    // ordena pelo numeroItem (lexicográfico)
-    nextItems.sort((a, b) => String(a.numeroItem).localeCompare(String(b.numeroItem)));
+    // ordena pelo numeroItem (por partes)
+    nextItems.sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem));
 
     const stats: ImportStats = { inserted, updated, ignored };
     onApply(nextItems, stats);
@@ -342,223 +343,243 @@ export function ImportItensCsvDialog({
       title: "Importação concluída",
       description: `${inserted} inseridos, ${updated} atualizados, ${ignored} ignorados.`,
     });
-    onOpenChange(false);
+    if (params.closeAfter) onOpenChange(false);
   }
 
+  const totalPreview = React.useMemo(() => {
+    if (loteTipo === "MANUTENCAO") return { label: "—", value: 0 };
+    const sum = rows.reduce((acc, r) => acc + round2((Number(r.total) || 0) * (Number(r.valorUnitario) || 0)), 0);
+    return { label: moneyBRL(sum), value: sum };
+  }, [loteTipo, rows]);
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-4xl rounded-3xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Importar CSV — Itens do Lote</AlertDialogTitle>
-          <AlertDialogDescription>
-            Envie um arquivo .csv (separador “;” ou “,”). Colunas extras serão ignoradas.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="grid gap-4">
-          {loteTipo === "MANUTENCAO" && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <div className="flex items-start gap-2">
-                <TriangleAlert className="mt-0.5 size-4" />
-                <div>
-                  Importação por CSV não está habilitada para <span className="font-semibold">MANUTENÇÃO</span>
-                  (mensal). Use o cadastro manual.
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-3 md:grid-cols-[1fr_260px]">
-            <div className="space-y-2">
-              <Label>Arquivo CSV</Label>
-              <Input
-                type="file"
-                accept=".csv,text/csv"
-                className="h-11 rounded-2xl"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  void onFile(file);
-                }}
-              />
-              <div className="text-xs text-muted-foreground">
-                {fileName ? `Selecionado: ${fileName}` : "Nenhum arquivo selecionado"}
-              </div>
-            </div>
-
-            <div className="flex flex-col justify-end gap-2">
-              <Button variant="secondary" className="rounded-2xl" onClick={downloadModel}>
-                <Download className="mr-2 size-4" />
-                Baixar modelo CSV
-              </Button>
-            </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl rounded-3xl p-0">
+        <div className="flex max-h-[80vh] flex-col">
+          <div className="shrink-0 border-b p-5">
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-base tracking-tight">Importar CSV — Itens do Lote</DialogTitle>
+              <DialogDescription>
+                Envie um arquivo .csv (separador " ;" ou ","). Colunas extras serão ignoradas.
+              </DialogDescription>
+            </DialogHeader>
           </div>
 
-          {parsing && (
-            <div className="rounded-2xl border bg-muted/20 px-4 py-3">
-              <div className="flex items-center justify-between text-sm">
-                <div className="font-medium">Processando arquivo…</div>
-                <div className="tabular-nums text-muted-foreground">{parseProgress}%</div>
-              </div>
-              <Progress value={parseProgress} className="mt-2 h-2" />
-            </div>
-          )}
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <Stat label="Linhas lidas" value={String(Math.max(0, linesRead))} />
-            <Stat label="Válidas" value={String(validCount)} tone="bg-emerald-50 border-emerald-200" />
-            <Stat
-              label="Inválidas"
-              value={String(invalidCount)}
-              tone={invalidCount ? "bg-rose-50 border-rose-200" : undefined}
-            />
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <Stat label="Duplicadas (no lote)" value={String(duplicates)} />
-            <div className="rounded-2xl border bg-muted/20 p-3">
-              <div className="text-xs text-muted-foreground">Modo de importação</div>
-              <Select value={mode} onValueChange={(v) => setMode(v as ImportMode)}>
-                <SelectTrigger className="mt-2 h-10 rounded-2xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UPSERT">Atualizar existentes e inserir novos (Upsert)</SelectItem>
-                  <SelectItem value="INSERT_ONLY">Somente inserir novos (ignorar duplicados)</SelectItem>
-                  <SelectItem value="REPLACE_ALL">Substituir tudo (apagar itens atuais e importar)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-2xl border bg-muted/20 p-3">
-              <div className="text-xs text-muted-foreground">Validação</div>
-              <div className="mt-2 flex items-center gap-2">
-                <Checkbox
-                  id="onlyValid"
-                  checked={onlyValid}
-                  onCheckedChange={(v) => setOnlyValid(Boolean(v))}
-                />
-                <Label htmlFor="onlyValid" className="text-sm">
-                  Importar apenas válidos
-                </Label>
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Se desmarcado e houver erros, a importação será bloqueada.
-              </div>
-            </div>
-          </div>
-
-          {(headerError || errors.length > 0) && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-rose-800">Erros encontrados</div>
-                  <div className="mt-1 text-sm text-rose-800">
-                    {headerError ? headerError : `Há ${errors.length} erro(s) de validação.`}
+          <div className="flex-1 overflow-y-auto p-5">
+            <div className="grid gap-4">
+              {loteTipo === "MANUTENCAO" && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="flex items-start gap-2">
+                    <TriangleAlert className="mt-0.5 size-4" />
+                    <div>
+                      Importação por CSV não está habilitada para <span className="font-semibold">MANUTENÇÃO</span>
+                      (mensal). Use o cadastro manual.
+                    </div>
                   </div>
                 </div>
-                <Button
-                  variant="secondary"
-                  className="rounded-2xl"
-                  onClick={downloadErrorsCsv}
-                  disabled={errors.length === 0}
-                >
-                  <Download className="mr-2 size-4" />
-                  Baixar CSV de erros
-                </Button>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-[1fr_260px]">
+                <div className="space-y-2">
+                  <Label>Arquivo CSV</Label>
+                  <Input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="h-11 rounded-2xl"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      void onFile(file);
+                    }}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    {fileName ? `Selecionado: ${fileName}` : "Nenhum arquivo selecionado"}
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-end gap-2">
+                  <Button variant="secondary" className="rounded-2xl" onClick={downloadModel}>
+                    <Download className="mr-2 size-4" />
+                    Baixar modelo CSV
+                  </Button>
+                </div>
               </div>
 
-              {errors.length > 0 && (
-                <div className="mt-3 max-h-40 overflow-auto rounded-2xl border border-rose-200 bg-white/60">
+              {parsing && (
+                <div className="rounded-2xl border bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="font-medium">Processando arquivo…</div>
+                    <div className="tabular-nums text-muted-foreground">{parseProgress}%</div>
+                  </div>
+                  <Progress value={parseProgress} className="mt-2 h-2" />
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <Stat label="Linhas lidas" value={String(Math.max(0, linesRead))} />
+                <Stat label="Válidas" value={String(validCount)} tone="bg-emerald-50 border-emerald-200" />
+                <Stat
+                  label="Inválidas"
+                  value={String(invalidCount)}
+                  tone={invalidCount ? "bg-rose-50 border-rose-200" : undefined}
+                />
+                <Stat label="Total (válidos)" value={totalPreview.label} />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <Stat label="Duplicadas (no lote)" value={String(duplicates)} />
+                <div className="rounded-2xl border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Modo de importação</div>
+                  <Select value={mode} onValueChange={(v) => setMode(v as ImportMode)}>
+                    <SelectTrigger className="mt-2 h-10 rounded-2xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="UPSERT">Atualizar existentes e inserir novos (Upsert)</SelectItem>
+                      <SelectItem value="INSERT_ONLY">Somente inserir novos (ignorar duplicados)</SelectItem>
+                      <SelectItem value="REPLACE_ALL">Substituir tudo (apagar itens atuais e importar)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-2xl border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Validação</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Checkbox
+                      id="onlyValid"
+                      checked={onlyValid}
+                      onCheckedChange={(v) => setOnlyValid(Boolean(v))}
+                    />
+                    <Label htmlFor="onlyValid" className="text-sm">
+                      Importar apenas válidos
+                    </Label>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Se desmarcado e houver erros, a importação será bloqueada.
+                  </div>
+                </div>
+              </div>
+
+              {(headerError || errors.length > 0) && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-rose-800">Erros encontrados</div>
+                      <div className="mt-1 text-sm text-rose-800">
+                        {headerError ? headerError : `Há ${errors.length} erro(s) de validação.`}
+                      </div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="rounded-2xl"
+                      onClick={downloadErrorsCsv}
+                      disabled={errors.length === 0}
+                    >
+                      <Download className="mr-2 size-4" />
+                      Baixar CSV de erros
+                    </Button>
+                  </div>
+
+                  {errors.length > 0 && (
+                    <div className="mt-3 max-h-40 overflow-auto rounded-2xl border border-rose-200 bg-white/60">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[90px]">Linha</TableHead>
+                            <TableHead className="w-[160px]">Campo</TableHead>
+                            <TableHead>Motivo</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {errors.slice(0, 50).map((e, idx) => (
+                            <TableRow key={`${e.lineNumber}-${idx}`}>
+                              <TableCell className="tabular-nums">{e.lineNumber}</TableCell>
+                              <TableCell className="font-medium">{e.field}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{e.message}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Separator />
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold tracking-tight">Pré-visualização</div>
+                    <div className="text-sm text-muted-foreground">Primeiras 10 linhas válidas (já mapeadas).</div>
+                  </div>
+                  <Badge variant="secondary" className="rounded-full">
+                    {validCount} válida(s)
+                  </Badge>
+                </div>
+
+                <div className="mt-3 overflow-hidden rounded-2xl border">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[90px]">Linha</TableHead>
-                        <TableHead className="w-[160px]">Campo</TableHead>
-                        <TableHead>Motivo</TableHead>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="w-[120px]">Item</TableHead>
+                        <TableHead>Especificação</TableHead>
+                        <TableHead className="w-[100px]">Unid</TableHead>
+                        <TableHead className="w-[120px]">Total</TableHead>
+                        <TableHead className="w-[160px]">Valor unit.</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {errors.slice(0, 50).map((e, idx) => (
-                        <TableRow key={`${e.lineNumber}-${idx}`}>
-                          <TableCell className="tabular-nums">{e.lineNumber}</TableCell>
-                          <TableCell className="font-medium">{e.field}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{e.message}</TableCell>
+                      {rows.slice(0, 10).length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                            Selecione um CSV para visualizar.
+                          </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        rows.slice(0, 10).map((r) => (
+                          <TableRow key={r.lineNumber} className="hover:bg-muted/30">
+                            <TableCell className="font-medium tabular-nums">{r.numeroItem}</TableCell>
+                            <TableCell className="text-sm">{r.especificacao}</TableCell>
+                            <TableCell className="text-sm">{r.unidade}</TableCell>
+                            <TableCell className="tabular-nums">{r.total}</TableCell>
+                            <TableCell className="tabular-nums">{r.valorUnitario.toLocaleString("pt-BR")}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </div>
-          )}
-
-          <Separator />
-
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold tracking-tight">Pré-visualização</div>
-                <div className="text-sm text-muted-foreground">Primeiras 10 linhas válidas (já mapeadas).</div>
               </div>
-              <Badge variant="secondary" className="rounded-full">
-                {validCount} válida(s)
-              </Badge>
-            </div>
-
-            <div className="mt-3 overflow-hidden rounded-2xl border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40">
-                    <TableHead className="w-[120px]">Item</TableHead>
-                    <TableHead>Especificação</TableHead>
-                    <TableHead className="w-[100px]">Unid</TableHead>
-                    <TableHead className="w-[120px]">Total</TableHead>
-                    <TableHead className="w-[160px]">Valor unit.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.slice(0, 10).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                        Selecione um CSV para visualizar.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.slice(0, 10).map((r) => (
-                      <TableRow key={r.lineNumber} className="hover:bg-muted/30">
-                        <TableCell className="font-medium tabular-nums">{r.numeroItem}</TableCell>
-                        <TableCell className="text-sm">{r.especificacao}</TableCell>
-                        <TableCell className="text-sm">{r.unidade}</TableCell>
-                        <TableCell className="tabular-nums">{r.total}</TableCell>
-                        <TableCell className="tabular-nums">{r.valorUnitario.toLocaleString("pt-BR")}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
             </div>
           </div>
-        </div>
 
-        <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-2xl" disabled={parsing}>
-            Cancelar
-          </AlertDialogCancel>
-          <AlertDialogAction
-            className="rounded-2xl"
-            disabled={parsing || rows.length === 0 || hasBlockingErrors || loteTipo === "MANUTENCAO"}
-            onClick={(e) => {
-              // evita fechar automaticamente antes do apply
-              e.preventDefault();
-              applyImport();
-            }}
-          >
-            <FileUp className="mr-2 size-4" />
-            Importar
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          <div className="shrink-0 border-t p-4">
+            <DialogFooter className="gap-2">
+              <Button variant="secondary" className="rounded-2xl" onClick={() => onOpenChange(false)} disabled={parsing}>
+                Cancelar
+              </Button>
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                disabled={parsing || rows.length === 0 || hasBlockingErrors || loteTipo === "MANUTENCAO"}
+                onClick={() => applyImport({ closeAfter: false })}
+              >
+                <FileUp className="mr-2 size-4" />
+                Importar
+              </Button>
+              <Button
+                className="rounded-2xl"
+                disabled={parsing || rows.length === 0 || hasBlockingErrors || loteTipo === "MANUTENCAO"}
+                onClick={() => applyImport({ closeAfter: true })}
+              >
+                <Save className="mr-2 size-4" />
+                Salvar
+              </Button>
+            </DialogFooter>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

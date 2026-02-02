@@ -81,6 +81,37 @@ export function getNomeComercial(item: ArpItem) {
   return first || (di || "").trim();
 }
 
+export function compareNumeroItem(a: string, b: string) {
+  // Ordenação numérica por partes (split por "."): 1.2 < 1.10
+  const pa = String(a ?? "")
+    .trim()
+    .split(".")
+    .filter(Boolean)
+    .map((x) => Number(x));
+  const pb = String(b ?? "")
+    .trim()
+    .split(".")
+    .filter(Boolean)
+    .map((x) => Number(x));
+
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const va = pa[i];
+    const vb = pb[i];
+    const aNum = Number.isFinite(va);
+    const bNum = Number.isFinite(vb);
+    if (aNum && bNum) {
+      if (va !== vb) return va - vb;
+    } else if (aNum && !bNum) {
+      return -1;
+    } else if (!aNum && bNum) {
+      return 1;
+    }
+  }
+
+  return String(a).localeCompare(String(b));
+}
+
 export function itemValorTotal(item: ArpItem) {
   if (item.kind === "MANUTENCAO") return undefined;
   const i = item as ArpItemFornecimento;
