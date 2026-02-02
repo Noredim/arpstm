@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
-import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog"; // Certifique-se que este arquivo existe
+// Se este arquivo também não existir, comente a linha abaixo temporariamente
+import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog"; 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,7 +54,9 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client"; // Importação do Supabase necessária
+
+// --- REMOVIDO PARA CORRIGIR O ERRO ---
+// import { supabase } from "@/integrations/supabase/client";
 
 // --- SCHEMAS E TIPOS ---
 
@@ -72,44 +75,42 @@ const oportunidadeSchema = z.object({
 
 type OportunidadeFormValues = z.infer<typeof oportunidadeSchema>;
 
-// --- FUNÇÕES DE BUSCA (REAL COM SUPABASE) ---
+// --- FUNÇÕES DE BUSCA (SIMULAÇÃO / MOCK) ---
+// Como o arquivo do Supabase não existe, usamos estas funções para a tela não quebrar.
+// Quando configurar o Supabase, substitua o conteúdo destas funções.
 
-// 1. Buscar Oportunidade (Editando)
 const fetchOportunidade = async (id: string) => {
   if (id === "nova") return null;
 
-  const { data, error } = await supabase
-    .from("oportunidades")
-    .select("*")
-    .eq("id", id)
-    .single();
+  // Simula delay de rede
+  await new Promise(resolve => setTimeout(resolve, 500));
 
-  if (error) {
-    console.error("Erro ao buscar oportunidade:", error);
-    throw error;
-  }
-
+  // Retorna dados fictícios para visualização
   return {
-    ...data,
-    data_fechamento_estimada: new Date(data.data_fechamento_estimada)
+    id,
+    titulo: "Projeto Exemplo (Recuperado)",
+    cliente_id: "1", 
+    status: "aberta",
+    valor_estimado: 15000.00,
+    probabilidade: 60,
+    data_fechamento_estimada: new Date(),
+    descricao: "Esta é uma descrição recuperada do sistema simulado.",
+    prioridade: "alta"
   };
 };
 
-// 2. Buscar Clientes (DA TABELA REAL)
 const fetchClientes = async () => {
-  // Busca id e nome (ou nome_fantasia/razao_social dependendo do seu banco)
-  // Ajuste 'nome' para o campo correto da sua tabela 'clientes' se for diferente
-  const { data, error } = await supabase
-    .from("clientes")
-    .select("id, nome") 
-    .order("nome", { ascending: true });
-
-  if (error) {
-    console.error("Erro ao buscar clientes:", error);
-    throw error;
-  }
+  // Simula delay de rede
+  await new Promise(resolve => setTimeout(resolve, 500));
   
-  return data || [];
+  // LISTA DE CLIENTES (MOCK)
+  // O sistema vai usar esta lista enquanto o Supabase não estiver configurado
+  return [
+    { id: "1", nome: "Empresa Alpha Ltda" },
+    { id: "2", nome: "Beta Soluções Tech" },
+    { id: "3", nome: "Gamma Comércio" },
+    { id: "4", nome: "Delta Serviços" }
+  ];
 };
 
 // --- COMPONENTE PRINCIPAL ---
@@ -155,43 +156,27 @@ export default function OportunidadeDetalhePage() {
     queryFn: fetchClientes,
   });
 
-  // Mutações (Salvar/Criar Oportunidade)
+  // Mutações (Salvar/Criar Oportunidade - SIMULADO)
   const createMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-      const { data, error } = await supabase
-        .from("oportunidades")
-        .insert([{
-          ...values,
-          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      console.log("Salvando (Simulado):", values);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { id: "nova-id-123", ...values };
     },
     onSuccess: (data) => {
       toast({ title: "Sucesso", description: "Oportunidade criada com sucesso." });
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
-      navigate(`/oportunidades/${data.id}`);
+      // navigate(`/oportunidades/${data.id}`); // Comentado para não navegar em mock
     },
     onError: (error) => {
       toast({ variant: "destructive", title: "Erro", description: "Erro ao criar oportunidade." });
-      console.error(error);
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-       const { error } = await supabase
-        .from("oportunidades")
-        .update({
-          ...values,
-          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
-        })
-        .eq("id", id);
-
-       if (error) throw error;
+       console.log("Atualizando (Simulado):", values);
+       await new Promise(resolve => setTimeout(resolve, 1000));
        return values;
     },
     onSuccess: () => {
@@ -201,7 +186,6 @@ export default function OportunidadeDetalhePage() {
     },
     onError: (error) => {
       toast({ variant: "destructive", title: "Erro", description: "Erro ao atualizar." });
-      console.error(error);
     },
   });
 
@@ -211,12 +195,14 @@ export default function OportunidadeDetalhePage() {
         form.reset({
             titulo: oportunidade.titulo,
             cliente_id: oportunidade.cliente_id,
-            status: oportunidade.status,
+            status: oportunidade.status, // TypeScript cast se necessário: as "aberta" | "ganha" ...
             valor_estimado: oportunidade.valor_estimado,
             probabilidade: oportunidade.probabilidade,
-            data_fechamento_estimada: new Date(oportunidade.data_fechamento_estimada),
+            data_fechamento_estimada: oportunidade.data_fechamento_estimada instanceof Date 
+                ? oportunidade.data_fechamento_estimada 
+                : new Date(oportunidade.data_fechamento_estimada),
             descricao: oportunidade.descricao || "",
-            prioridade: oportunidade.prioridade,
+            prioridade: oportunidade.prioridade as any,
         });
     }
   }, [oportunidade, form]);
@@ -263,7 +249,7 @@ export default function OportunidadeDetalhePage() {
               </h1>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Badge variant={form.watch("status") === 'ganha' ? 'default' : 'secondary'}>
-                    {form.watch("status")?.toUpperCase()}
+                    {form.watch("status")?.toUpperCase() || "NOVA"}
                 </Badge>
               </div>
             </div>
@@ -302,7 +288,7 @@ export default function OportunidadeDetalhePage() {
                                 />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                     {/* SELECT DE CLIENTES REAL */}
+                                     {/* SELECT DE CLIENTES */}
                                      <FormField
                                         control={form.control}
                                         name="cliente_id"
@@ -334,7 +320,7 @@ export default function OportunidadeDetalhePage() {
                                                         ))}
                                                         {clientes?.length === 0 && (
                                                             <div className="p-2 text-sm text-center text-muted-foreground">
-                                                                Nenhum cliente cadastrado.
+                                                                Nenhum cliente disponível.
                                                             </div>
                                                         )}
                                                     </SelectContent>
@@ -513,7 +499,7 @@ export default function OportunidadeDetalhePage() {
         open={isClienteDialogOpen} 
         onOpenChange={(open) => {
             setIsClienteDialogOpen(open);
-            // IMPORTANTE: Quando o modal fechar, recarregamos a lista de clientes para o novo aparecer no select
+            // IMPORTANTE: Quando o modal fechar, recarregamos a lista
             if (!open) {
                 queryClient.invalidateQueries({ queryKey: ["clientes"] });
             }
