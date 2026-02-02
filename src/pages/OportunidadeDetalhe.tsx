@@ -1,7 +1,7 @@
 import * as React from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
-// REMOVIDO TEMPORARIAMENTE SE NÃO EXISTIR: import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
+import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog"; // Certifique-se que este arquivo existe
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,16 +53,9 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client"; // Importação do Supabase necessária
 
-// NOTA: Removi o import do Supabase para evitar o erro de "Module not found"
-// import { supabase } from "@/integrations/supabase/client"; 
-
-// --- TIPOS E SCHEMAS ---
-
-interface Cliente {
-  id: string;
-  nome: string;
-}
+// --- SCHEMAS E TIPOS ---
 
 const oportunidadeSchema = z.object({
   titulo: z.string().min(3, "O título deve ter pelo menos 3 caracteres"),
@@ -79,40 +72,44 @@ const oportunidadeSchema = z.object({
 
 type OportunidadeFormValues = z.infer<typeof oportunidadeSchema>;
 
-// --- FUNÇÕES DE BUSCA (MOCK / SIMULAÇÃO) ---
-// Estas funções simulam o banco de dados para a tela não quebrar
+// --- FUNÇÕES DE BUSCA (REAL COM SUPABASE) ---
 
+// 1. Buscar Oportunidade (Editando)
 const fetchOportunidade = async (id: string) => {
   if (id === "nova") return null;
 
-  // Simulação de delay de rede
-  return new Promise<any>((resolve) => {
-    setTimeout(() => {
-        resolve({
-            id,
-            titulo: "Projeto Exemplo (Mock)",
-            cliente_id: "1", // ID que deve existir na lista de clientes abaixo
-            status: "aberta",
-            valor_estimado: 50000,
-            probabilidade: 60,
-            data_fechamento_estimada: new Date(),
-            descricao: "Descrição detalhada do projeto simulado...",
-            prioridade: "alta"
-        })
-    }, 600);
-  });
+  const { data, error } = await supabase
+    .from("oportunidades")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Erro ao buscar oportunidade:", error);
+    throw error;
+  }
+
+  return {
+    ...data,
+    data_fechamento_estimada: new Date(data.data_fechamento_estimada)
+  };
 };
 
-const fetchClientes = async (): Promise<Cliente[]> => {
-  // Simulação de delay
-  await new Promise(resolve => setTimeout(resolve, 400));
+// 2. Buscar Clientes (DA TABELA REAL)
+const fetchClientes = async () => {
+  // Busca id e nome (ou nome_fantasia/razao_social dependendo do seu banco)
+  // Ajuste 'nome' para o campo correto da sua tabela 'clientes' se for diferente
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id, nome") 
+    .order("nome", { ascending: true });
+
+  if (error) {
+    console.error("Erro ao buscar clientes:", error);
+    throw error;
+  }
   
-  return [
-    { id: "1", nome: "Empresa Alpha Ltda" },
-    { id: "2", nome: "Beta Soluções Tech" },
-    { id: "3", nome: "Gamma Comércio" },
-    { id: "4", nome: "Delta Serviços" }
-  ];
+  return data || [];
 };
 
 // --- COMPONENTE PRINCIPAL ---
@@ -123,7 +120,7 @@ export default function OportunidadeDetalhePage() {
   const queryClient = useQueryClient();
   const isNova = id === "nova";
 
-  // State local
+  // State para controlar o modal de Novo Cliente
   const [isClienteDialogOpen, setIsClienteDialogOpen] = React.useState(false);
   
   const form = useForm<OportunidadeFormValues>({
@@ -140,10 +137,10 @@ export default function OportunidadeDetalhePage() {
     },
   });
 
+  // Queries
   const { 
     data: oportunidade, 
-    isLoading: isLoadingOportunidade,
-    error: errorOportunidade 
+    isLoading: isLoadingOportunidade 
   } = useQuery({
     queryKey: ["oportunidade", id],
     queryFn: () => fetchOportunidade(id!),
@@ -158,53 +155,57 @@ export default function OportunidadeDetalhePage() {
     queryFn: fetchClientes,
   });
 
+  // Mutações (Salvar/Criar Oportunidade)
   const createMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-      // Simulação de API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log("Enviando para API:", values);
-      return { id: "novo-id-123", ...values };
+      const { data, error } = await supabase
+        .from("oportunidades")
+        .insert([{
+          ...values,
+          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
     },
     onSuccess: (data) => {
-      toast({
-        title: "Oportunidade criada",
-        description: "A oportunidade foi cadastrada com sucesso (Simulação).",
-      });
+      toast({ title: "Sucesso", description: "Oportunidade criada com sucesso." });
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
       navigate(`/oportunidades/${data.id}`);
     },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Erro ao criar",
-        description: "Ocorreu um erro ao tentar criar a oportunidade.",
-      });
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao criar oportunidade." });
+      console.error(error);
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-       await new Promise(resolve => setTimeout(resolve, 1000));
-       console.log("Atualizando API:", values);
+       const { error } = await supabase
+        .from("oportunidades")
+        .update({
+          ...values,
+          data_fechamento_estimada: values.data_fechamento_estimada.toISOString()
+        })
+        .eq("id", id);
+
+       if (error) throw error;
        return values;
     },
     onSuccess: () => {
-      toast({
-        title: "Oportunidade atualizada",
-        description: "As alterações foram salvas com sucesso (Simulação).",
-      });
+      toast({ title: "Sucesso", description: "Oportunidade atualizada." });
       queryClient.invalidateQueries({ queryKey: ["oportunidade", id] });
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
     },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Erro ao atualizar",
-        description: "Não foi possível salvar as alterações.",
-      });
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao atualizar." });
+      console.error(error);
     },
   });
 
+  // Preencher formulário ao carregar dados
   React.useEffect(() => {
     if (oportunidade) {
         form.reset({
@@ -213,113 +214,70 @@ export default function OportunidadeDetalhePage() {
             status: oportunidade.status,
             valor_estimado: oportunidade.valor_estimado,
             probabilidade: oportunidade.probabilidade,
-            data_fechamento_estimada: oportunidade.data_fechamento_estimada instanceof Date 
-                ? oportunidade.data_fechamento_estimada 
-                : new Date(oportunidade.data_fechamento_estimada),
+            data_fechamento_estimada: new Date(oportunidade.data_fechamento_estimada),
             descricao: oportunidade.descricao || "",
             prioridade: oportunidade.prioridade,
         });
     }
   }, [oportunidade, form]);
 
+  // Barra de progresso visual
   const progressoVisual = React.useMemo(() => {
      if (isNova) return 0;
-     const statusAtual = form.getValues("status") || oportunidade?.status;
-     const probAtual = form.getValues("probabilidade") || oportunidade?.probabilidade || 0;
-
-     switch(statusAtual) {
-         case 'ganha': return 100;
-         case 'perdida': return 100;
-         case 'cancelada': return 0;
-         default: return probAtual;
-     }
-  }, [oportunidade, isNova, form.watch("status"), form.watch("probabilidade")]);
+     const status = form.watch("status");
+     const prob = form.watch("probabilidade");
+     if (status === 'ganha') return 100;
+     if (status === 'cancelada' || status === 'perdida') return 0;
+     return prob || 0;
+  }, [form.watch("status"), form.watch("probabilidade"), isNova]);
 
   const onSubmit = (values: OportunidadeFormValues) => {
-    if (isNova) {
-      createMutation.mutate(values);
-    } else {
-      updateMutation.mutate(values);
-    }
+    if (isNova) createMutation.mutate(values);
+    else updateMutation.mutate(values);
   };
 
-  const isLoading = isLoadingOportunidade || isLoadingClientes;
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   if (!isNova && isLoadingOportunidade) {
     return (
       <AppLayout>
-        <div className="flex h-full w-full items-center justify-center">
+        <div className="flex h-full items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </AppLayout>
     );
   }
 
-  if (!isNova && errorOportunidade) {
-     return (
-        <AppLayout>
-            <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
-                <h2 className="text-xl font-semibold text-destructive">Erro ao carregar oportunidade</h2>
-                <Button variant="outline" onClick={() => navigate("/oportunidades")}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para lista
-                </Button>
-            </div>
-        </AppLayout>
-     );
-  }
-
   return (
     <AppLayout>
       <div className="flex flex-col gap-6 p-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/oportunidades")}
-            >
+            <Button variant="ghost" size="icon" onClick={() => navigate("/oportunidades")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                {isNova ? "Nova Oportunidade" : form.getValues("titulo") || "Detalhes da Oportunidade"}
+                {isNova ? "Nova Oportunidade" : form.getValues("titulo")}
               </h1>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{isNova ? "Cadastre uma nova oportunidade de negócio" : "Gerencie os detalhes desta negociação"}</span>
-                {!isNova && (
-                    <Badge variant={oportunidade?.status === 'ganha' ? 'default' : 'secondary'}>
-                        {oportunidade?.status}
-                    </Badge>
-                )}
+                <Badge variant={form.watch("status") === 'ganha' ? 'default' : 'secondary'}>
+                    {form.watch("status")?.toUpperCase()}
+                </Badge>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!isNova && (
-               <Button size="sm" variant="destructive">
-                 <Trash2 className="h-4 w-4 mr-2" /> Excluir
-               </Button>
-            )}
-            <Button onClick={form.handleSubmit(onSubmit)} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Salvar Oportunidade
-                </>
-              )}
-            </Button>
-          </div>
+          <Button onClick={form.handleSubmit(onSubmit)} disabled={isSaving}>
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Salvar
+          </Button>
         </div>
 
         <Separator />
 
         <div className="grid gap-6 md:grid-cols-3">
+            {/* Coluna Principal */}
             <div className="md:col-span-2 space-y-6">
                  <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -336,7 +294,7 @@ export default function OportunidadeDetalhePage() {
                                         <FormItem>
                                             <FormLabel>Título da Oportunidade</FormLabel>
                                             <FormControl>
-                                                <Input placeholder="Ex: Contrato Anual de Manutenção" {...field} />
+                                                <Input placeholder="Ex: Contrato Anual" {...field} />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -344,6 +302,7 @@ export default function OportunidadeDetalhePage() {
                                 />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     {/* SELECT DE CLIENTES REAL */}
                                      <FormField
                                         control={form.control}
                                         name="cliente_id"
@@ -354,28 +313,30 @@ export default function OportunidadeDetalhePage() {
                                                     <Button 
                                                         size="sm" 
                                                         variant="link" 
-                                                        className="h-auto p-0 text-primary"
+                                                        className="h-auto p-0 text-primary font-bold"
                                                         type="button"
-                                                        onClick={() => {
-                                                            setIsClienteDialogOpen(true);
-                                                            toast({ title: "Funcionalidade Mock", description: "O modal de criação abriria aqui se o componente existisse." })
-                                                        }}
+                                                        onClick={() => setIsClienteDialogOpen(true)}
                                                     >
                                                         + Novo
                                                     </Button>
                                                 </FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                <Select onValueChange={field.onChange} value={field.value}>
                                                     <FormControl>
                                                         <SelectTrigger>
                                                             <SelectValue placeholder={isLoadingClientes ? "Carregando..." : "Selecione um cliente"} />
                                                         </SelectTrigger>
                                                     </FormControl>
                                                     <SelectContent>
-                                                        {clientes?.map((cliente: Cliente) => (
+                                                        {clientes?.map((cliente: any) => (
                                                             <SelectItem key={cliente.id} value={cliente.id}>
                                                                 {cliente.nome}
                                                             </SelectItem>
                                                         ))}
+                                                        {clientes?.length === 0 && (
+                                                            <div className="p-2 text-sm text-center text-muted-foreground">
+                                                                Nenhum cliente cadastrado.
+                                                            </div>
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                                 <FormMessage />
@@ -388,16 +349,16 @@ export default function OportunidadeDetalhePage() {
                                         name="status"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Estágio / Status</FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                <FormLabel>Status</FormLabel>
+                                                <Select onValueChange={field.onChange} value={field.value}>
                                                     <FormControl>
                                                         <SelectTrigger>
-                                                            <SelectValue placeholder="Status atual" />
+                                                            <SelectValue />
                                                         </SelectTrigger>
                                                     </FormControl>
                                                     <SelectContent>
-                                                        <SelectItem value="aberta">Em Aberto / Negociação</SelectItem>
-                                                        <SelectItem value="ganha">Ganha / Fechada</SelectItem>
+                                                        <SelectItem value="aberta">Em Aberto</SelectItem>
+                                                        <SelectItem value="ganha">Ganha</SelectItem>
                                                         <SelectItem value="perdida">Perdida</SelectItem>
                                                         <SelectItem value="cancelada">Cancelada</SelectItem>
                                                     </SelectContent>
@@ -413,13 +374,9 @@ export default function OportunidadeDetalhePage() {
                                     name="descricao"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Descrição Detalhada</FormLabel>
+                                            <FormLabel>Descrição</FormLabel>
                                             <FormControl>
-                                                <Textarea 
-                                                    placeholder="Detalhes sobre escopo, necessidades do cliente, etc." 
-                                                    className="min-h-[120px]"
-                                                    {...field} 
-                                                />
+                                                <Textarea placeholder="Detalhes..." className="min-h-[100px]" {...field} />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -430,7 +387,7 @@ export default function OportunidadeDetalhePage() {
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Valores e Previsões</CardTitle>
+                                <CardTitle>Valores e Prazos</CardTitle>
                             </CardHeader>
                             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FormField
@@ -438,14 +395,9 @@ export default function OportunidadeDetalhePage() {
                                     name="valor_estimado"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Valor Estimado (R$)</FormLabel>
+                                            <FormLabel>Valor (R$)</FormLabel>
                                             <FormControl>
-                                                <Input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    placeholder="0,00" 
-                                                    {...field} 
-                                                />
+                                                <Input type="number" step="0.01" {...field} />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -457,22 +409,13 @@ export default function OportunidadeDetalhePage() {
                                     name="probabilidade"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Probabilidade de Fechamento (%)</FormLabel>
+                                            <FormLabel>Probabilidade (%)</FormLabel>
                                             <div className="flex items-center gap-4">
                                                 <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        min="0" 
-                                                        max="100" 
-                                                        {...field}
-                                                        className="w-24" 
-                                                    />
+                                                    <Input type="number" min="0" max="100" {...field} className="w-24" />
                                                 </FormControl>
                                                 <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                                                    <div 
-                                                        className="h-full bg-primary transition-all duration-500" 
-                                                        style={{ width: `${field.value}%` }} 
-                                                    />
+                                                    <div className="h-full bg-primary transition-all" style={{ width: `${field.value}%` }} />
                                                 </div>
                                             </div>
                                             <FormMessage />
@@ -485,22 +428,15 @@ export default function OportunidadeDetalhePage() {
                                     name="data_fechamento_estimada"
                                     render={({ field }) => (
                                         <FormItem className="flex flex-col">
-                                            <FormLabel>Previsão de Fechamento</FormLabel>
+                                            <FormLabel>Previsão Fechamento</FormLabel>
                                             <Popover>
                                                 <PopoverTrigger asChild>
                                                     <FormControl>
                                                         <Button
                                                             variant={"outline"}
-                                                            className={cn(
-                                                                "w-full pl-3 text-left font-normal",
-                                                                !field.value && "text-muted-foreground"
-                                                            )}
+                                                            className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
                                                         >
-                                                            {field.value ? (
-                                                                format(field.value, "PPP", { locale: ptBR })
-                                                            ) : (
-                                                                <span>Selecione uma data</span>
-                                                            )}
+                                                            {field.value ? format(field.value, "PPP", { locale: ptBR }) : <span>Selecione data</span>}
                                                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                                         </Button>
                                                     </FormControl>
@@ -510,9 +446,6 @@ export default function OportunidadeDetalhePage() {
                                                         mode="single"
                                                         selected={field.value}
                                                         onSelect={field.onChange}
-                                                        disabled={(date) =>
-                                                            date < new Date("1900-01-01")
-                                                        }
                                                         initialFocus
                                                     />
                                                 </PopoverContent>
@@ -521,18 +454,16 @@ export default function OportunidadeDetalhePage() {
                                         </FormItem>
                                     )}
                                 />
-
+                                
                                 <FormField
                                     control={form.control}
                                     name="prioridade"
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Prioridade</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                            <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl>
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
                                                 </FormControl>
                                                 <SelectContent>
                                                     <SelectItem value="baixa">Baixa</SelectItem>
@@ -550,91 +481,44 @@ export default function OportunidadeDetalhePage() {
                  </Form>
             </div>
 
+            {/* Lateral Info */}
             <div className="space-y-6">
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm font-medium">Resumo do Pipeline</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle className="text-sm">Resumo</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground flex items-center">
-                                <Clock className="mr-2 h-4 w-4" /> Criado em
-                            </span>
-                            <span>{isNova ? "Hoje" : "20/01/2024"}</span>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground flex items-center"><Clock className="mr-2 h-4 w-4"/> Criado</span>
+                            <span>{isNova ? "Hoje" : "Anteriormente"}</span>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground flex items-center">
-                                <User className="mr-2 h-4 w-4" /> Responsável
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                                    ME
-                                </div>
-                                <span>Você</span>
-                            </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground flex items-center"><User className="mr-2 h-4 w-4"/> Resp.</span>
+                            <span>Você</span>
                         </div>
                         <Separator />
                         <div className="space-y-2">
-                            <span className="text-sm font-medium">Progresso do Negócio</span>
+                            <span className="text-sm font-medium">Progresso</span>
                             <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                                <div 
-                                    className={cn("h-full transition-all duration-1000", 
-                                        progressoVisual >= 80 ? "bg-green-500" : 
-                                        progressoVisual >= 50 ? "bg-yellow-500" : "bg-blue-500"
-                                    )}
-                                    style={{ width: `${progressoVisual}%` }} 
-                                />
+                                <div className={cn("h-full transition-all", progressoVisual >= 80 ? "bg-green-500" : "bg-blue-500")} style={{ width: `${progressoVisual}%` }} />
                             </div>
-                            <p className="text-xs text-muted-foreground text-right">{progressoVisual}% concluído</p>
+                            <p className="text-xs text-right text-muted-foreground">{progressoVisual}%</p>
                         </div>
                     </CardContent>
                 </Card>
-
-                {!isNova && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm font-medium">Atividades Recentes</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[200px] pr-4">
-                                <div className="space-y-4">
-                                    <div className="flex gap-3 text-sm">
-                                        <div className="mt-0.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                                        <div>
-                                            <p className="font-medium">Proposta enviada</p>
-                                            <p className="text-xs text-muted-foreground">Há 2 dias</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 text-sm">
-                                        <div className="mt-0.5 h-2 w-2 rounded-full bg-gray-300 shrink-0" />
-                                        <div>
-                                            <p className="font-medium">Oportunidade criada</p>
-                                            <p className="text-xs text-muted-foreground">Há 5 dias</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </ScrollArea>
-                        </CardContent>
-                    </Card>
-                )}
             </div>
         </div>
       </div>
       
-      {/* MANTIDO DESATIVADO PARA NÃO QUEBRAR SE O ARQUIVO NÃO EXISTIR.
-        Se você já criou o componente ClienteFormDialog, pode descomentar a linha abaixo
-        e o import no topo do arquivo.
-      */}
-      {/* <ClienteFormDialog 
+      {/* MODAL DE NOVO CLIENTE */}
+      <ClienteFormDialog 
         open={isClienteDialogOpen} 
         onOpenChange={(open) => {
             setIsClienteDialogOpen(open);
+            // IMPORTANTE: Quando o modal fechar, recarregamos a lista de clientes para o novo aparecer no select
             if (!open) {
                 queryClient.invalidateQueries({ queryKey: ["clientes"] });
             }
         }}
-      /> 
-      */}
+      />
     </AppLayout>
   );
 }
