@@ -743,48 +743,41 @@ function LoteCard({
   const Icon = TIPOS_FORNECIMENTO.find((t) => t.value === lote.tipoFornecimento)?.icon ?? Boxes;
   const [openCsv, setOpenCsv] = React.useState(false);
   const { setLoteItens } = useArpStore();
+  const isMensalLote = lote.tipoFornecimento === "MANUTENCAO" || lote.tipoFornecimento === "COMODATO";
 
-  const totalLote = React.useMemo(() => {
-    // REGRA DE NEGÓCIO: INSTALAÇÃO DEVE SER TRATADA COMO FORNECIMENTO (Total à vista).
-    // APENAS MANUTENÇÃO E COMODATO DEVEM MOSTRAR TOTAL MENSAL/ANUAL.
-    if (lote.tipoFornecimento === "MANUTENCAO" || lote.tipoFornecimento === "COMODATO") {
-      const totalMensal = lote.itens.reduce((sum, it) => {
-        const qtd = it.total || 0;
-        let itemMensal = 0;
-        if (it.kind === "MANUTENCAO") {
-          itemMensal = qtd * ((it as ArpItemManutencao).valorUnitarioMensal || 0);
-        } else {
-          // COMODATO entra aqui
-          itemMensal = qtd * ((it as ArpItemFornecimento).valorUnitario || 0);
-          itemMensal += qtd * ((it as ArpItemFornecimento).valorUnitarioMensal || 0);
-        }
-        return sum + itemMensal;
-      }, 0);
+  const computeItemMensal = React.useCallback(
+    (item: ArpItem) => {
+      const quantidade = item.total || 0;
+      if (lote.tipoFornecimento === "MANUTENCAO") {
+        const dados = item as ArpItemManutencao;
+        return quantidade * (dados.valorUnitarioMensal || 0);
+      }
+      if (lote.tipoFornecimento === "COMODATO") {
+        const dados = item as ArpItemFornecimento;
+        return quantidade * (dados.valorUnitario || 0);
+      }
+      return itemValorTotalMensal(item) ?? 0;
+    },
+    [lote.tipoFornecimento],
+  );
 
-      const roundedTotalMensal = round2(totalMensal);
-      const totalAnual = round2(roundedTotalMensal * 12);
-
+  const loteTotals = React.useMemo(() => {
+    if (isMensalLote) {
+      const mensal = round2(lote.itens.reduce((sum, it) => sum + computeItemMensal(it), 0));
       return {
-        label: `${moneyBRL(roundedTotalMensal)} /mês`,
-        secondaryLabel: `Anual: ${moneyBRL(totalAnual)}`,
-        raw: roundedTotalMensal,
+        kind: "mensal" as const,
+        mensal,
+        anual: round2(mensal * 12),
       };
     }
-
-    // FORNECIMENTO, INSTALACAO
-    const totalVista = lote.itens.reduce((sum, it) => sum + (itemValorTotal(it) ?? 0), 0);
-    const totalMensalOpcional = lote.itens.reduce((sum, it) => sum + (itemValorTotalMensal(it) ?? 0), 0);
-
-    if (totalMensalOpcional > 0) {
-      return {
-        label: `${moneyBRL(totalVista)}`,
-        secondaryLabel: `+ ${moneyBRL(totalMensalOpcional)} /mês`,
-        raw: totalVista,
-      };
-    }
-
-    return { label: moneyBRL(totalVista), secondaryLabel: null, raw: totalVista };
-  }, [lote.itens, lote.tipoFornecimento]);
+    const vista = round2(lote.itens.reduce((sum, it) => sum + (itemValorTotal(it) ?? 0), 0));
+    const mensal = round2(lote.itens.reduce((sum, it) => sum + (itemValorTotalMensal(it) ?? 0), 0));
+    return {
+      kind: "avista" as const,
+      vista,
+      mensal,
+    };
+  }, [computeItemMensal, isMensalLote, lote.itens]);
 
   const itensOrdenados = React.useMemo(() => {
     return lote.itens.slice().sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem));
@@ -809,13 +802,34 @@ function LoteCard({
                   <Badge variant="secondary" className="rounded-full">
                     {tipoLabel(lote.tipoFornecimento)}
                   </Badge>
+                  {isMensalLote && (
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
+                    >
+                      Mensal
+                    </Badge>
+                  )}
                   <Badge variant="secondary" className="rounded-full">
                     {lote.itens.length} item(ns)
                   </Badge>
-                  <Badge className="rounded-full bg-indigo-600 text-white">
-                    Total: {totalLote.label}
-                    {totalLote.secondaryLabel && <span className="ml-1 opacity-80">{totalLote.secondaryLabel}</span>}
-                  </Badge>
+                  {loteTotals.kind === "mensal" ? (
+                    <>
+                      <Badge className="rounded-full bg-indigo-600 text-white">
+                        Mensal: {moneyBRL(loteTotals.mensal)}
+                      </Badge>
+                      <Badge variant="secondary" className="rounded-full">
+                        Anual: {moneyBRL(loteTotals.anual)}
+                      </Badge>
+                    </>
+                  ) : (
+                    <Badge className="rounded-full bg-indigo-600 text-white">
+                      Total: {moneyBRL(loteTotals.vista)}
+                      {loteTotals.mensal > 0 && (
+                        <span className="ml-1 opacity-80">+ {moneyBRL(loteTotals.mensal)} / mês</span>
+                      )}
+                    </Badge>
+                  )}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   Clique para {open ? "recolher" : "expandir"}.
@@ -871,30 +885,27 @@ function LoteCard({
                   </TableRow>
                 ) : (
                   itensOrdenados.map((it) => {
+                    const monthlyRaw = isMensalLote ? computeItemMensal(it) : itemValorTotalMensal(it) ?? 0;
+                    const monthlyValue = round2(monthlyRaw);
+                    const annualValue = isMensalLote ? round2(monthlyValue * 12) : itemTotalAnual(it);
+                    const vistaValue = itemValorTotal(it) ?? 0;
+
                     let valorPrincipal: string;
                     let valorSecundario: string;
 
-                    if (lote.tipoFornecimento === "MANUTENCAO" || lote.tipoFornecimento === "COMODATO") {
-                      const qtd = it.total || 0;
-                      let itemMensal = 0;
-                      if (it.kind === "MANUTENCAO") {
-                        itemMensal = qtd * ((it as ArpItemManutencao).valorUnitarioMensal || 0);
-                      } else {
-                        itemMensal = qtd * ((it as ArpItemFornecimento).valorUnitario || 0);
-                        itemMensal += qtd * ((it as ArpItemFornecimento).valorUnitarioMensal || 0);
-                      }
-                      const roundedMensal = round2(itemMensal);
-                      valorPrincipal = `${moneyBRL(roundedMensal)} /m`;
-                      valorSecundario = `Anual: ${moneyBRL(round2(roundedMensal * 12))}`;
+                    if (isMensalLote) {
+                      valorPrincipal = `${moneyBRL(monthlyValue)} / mês`;
+                      valorSecundario = `Anual: ${moneyBRL(annualValue ?? round2(monthlyValue * 12))}`;
                     } else {
-                      const itf = it as ArpItemFornecimento;
-                      valorPrincipal = moneyBRL(itemValorTotal(itf));
-                      valorSecundario = `Unit.: ${moneyBRL(itf.valorUnitario)}`;
-                      const mensal = itemValorTotalMensal(itf);
-                      if (mensal != null && mensal > 0) {
-                        valorSecundario += ` + ${moneyBRL(mensal)} /m`;
+                      const unitValue = moneyBRL((it as ArpItemFornecimento).valorUnitario || 0);
+                      const extraParts = [`Unit.: ${unitValue}`];
+                      if (monthlyValue > 0) {
+                        extraParts.push(`Mensal: ${moneyBRL(monthlyValue)} / mês`);
                       }
+                      valorPrincipal = moneyBRL(round2(vistaValue));
+                      valorSecundario = extraParts.join(" • ");
                     }
+
                     const hasEquip = (it.equipamentos?.length ?? 0) > 0;
 
                     return (
@@ -906,7 +917,7 @@ function LoteCard({
                         </TableCell>
                         <TableCell className="tabular-nums">{it.total}</TableCell>
                         <TableCell>
-                          <div className="text-sm font-medium tabular-nums">{valorPrincipal}</div>
+                          <div className="text-sm font-semibold tabular-nums">{valorPrincipal}</div>
                           <div className="text-xs text-muted-foreground">{valorSecundario}</div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -941,13 +952,21 @@ function LoteCard({
           </div>
 
           <div className="mt-3 flex items-center justify-end rounded-2xl border bg-muted/20 px-4 py-3 text-sm">
-            <span className="text-muted-foreground">Total do lote:&nbsp;</span>
-            <span className="font-semibold tabular-nums">
-              {totalLote.label}
-              {totalLote.secondaryLabel && (
-                <span className="ml-1 font-normal text-muted-foreground">{totalLote.secondaryLabel}</span>
-              )}
-            </span>
+            {loteTotals.kind === "mensal" ? (
+              <div className="text-right">
+                <div className="font-semibold tabular-nums">{moneyBRL(loteTotals.mensal)} / mês</div>
+                <div className="text-xs text-muted-foreground">Equivalente anual: {moneyBRL(loteTotals.anual)}</div>
+              </div>
+            ) : (
+              <div className="text-right">
+                <div className="font-semibold tabular-nums">{moneyBRL(loteTotals.vista)}</div>
+                {loteTotals.mensal > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Recorrente: {moneyBRL(loteTotals.mensal)} / mês
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -1079,11 +1098,11 @@ function ItemDialog({
               <div className="space-y-1.5">
                 <Label>Nome comercial</Label>
                 <Input
-                  value={nomeComercial}
-                  onChange={(e) => setNomeComercial(e.target.value)}
-                  className="h-11 rounded-2xl"
-                  placeholder="Ex.: DCS"
-                />
+                    value={nomeComercial}
+                    onChange={(e) => setNomeComercial(e.target.value)}
+                    className="h-11 rounded-2xl"
+                    placeholder="Ex.: DCS"
+                  />
                 <div className="text-xs text-muted-foreground">
                   Usado nos selects de KITs e oportunidades (não mostra a descrição completa).
                 </div>
