@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -35,13 +34,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Building2,
   Calendar as CalendarIcon,
-  CheckCircle2,
   Clock,
-  FileText,
   Loader2,
-  Plus,
   Save,
   Trash2,
   User,
@@ -57,7 +52,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { supabase } from "@/lib/supabase"; // Assumindo cliente supabase, ajuste se necessário conforme seu projeto
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // --- TIPOS E SCHEMAS ---
@@ -77,16 +71,10 @@ const oportunidadeSchema = z.object({
 
 type OportunidadeFormValues = z.infer<typeof oportunidadeSchema>;
 
-// Mock functions para substituir chamadas de API reais se não estiverem disponíveis no contexto
-// (Preservando a lógica original de fetching se existia, aqui adaptado para integridade)
+// Mock functions (Simulação de API)
 const fetchOportunidade = async (id: string) => {
-  // Simulação ou chamada real
-  // const { data, error } = await supabase.from('oportunidades').select('*').eq('id', id).single();
-  // if (error) throw error;
-  // return data;
   return new Promise<any>((resolve) => {
     setTimeout(() => {
-        // Retorno Mockado para evitar quebra se backend não estiver conectado
         resolve({
             id,
             titulo: "Projeto Exemplo",
@@ -103,19 +91,22 @@ const fetchOportunidade = async (id: string) => {
 };
 
 const fetchClientes = async () => {
-   // Simulação
    return [
        { id: "1", nome: "Acme Corp" },
        { id: "2", nome: "Globex Inc" }
    ];
 };
 
-export function OportunidadeDetalhePage() {
+// --- COMPONENTE PRINCIPAL ---
+// O 'export default' aqui resolve o erro de importação nas rotas
+export default function OportunidadeDetalhePage() {
+  
   // 1. ZONA DE HOOKS (EXECUÇÃO INCONDICIONAL)
+  // Mova todos os hooks para cá. NUNCA coloque um 'return' antes deste bloco.
   // ---------------------------------------------------------------------------
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams] = useSearchParams(); // Hook mantido para integridade
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isNova = id === "nova";
@@ -139,7 +130,6 @@ export function OportunidadeDetalhePage() {
   });
 
   // Queries (Data Fetching)
-  // Use `enabled` para controlar a execução, não `if`
   const { 
     data: oportunidade, 
     isLoading: isLoadingOportunidade,
@@ -147,7 +137,7 @@ export function OportunidadeDetalhePage() {
   } = useQuery({
     queryKey: ["oportunidade", id],
     queryFn: () => fetchOportunidade(id!),
-    enabled: !!id && !isNova, // Só busca se tiver ID e não for 'nova'
+    enabled: !!id && !isNova, // Controla a execução sem quebrar as regras de hooks
   });
 
   const { 
@@ -161,7 +151,6 @@ export function OportunidadeDetalhePage() {
   // Mutations
   const createMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-      // await supabase.from('oportunidades').insert(values);
       console.log("Criando:", values);
       return { id: "new-id-123", ...values };
     },
@@ -173,7 +162,7 @@ export function OportunidadeDetalhePage() {
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
       navigate(`/oportunidades/${data.id}`);
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         variant: "destructive",
         title: "Erro ao criar",
@@ -184,7 +173,6 @@ export function OportunidadeDetalhePage() {
 
   const updateMutation = useMutation({
     mutationFn: async (values: OportunidadeFormValues) => {
-       // await supabase.from('oportunidades').update(values).eq('id', id);
        console.log("Atualizando:", values);
        return values;
     },
@@ -208,7 +196,6 @@ export function OportunidadeDetalhePage() {
   // Effects
   React.useEffect(() => {
     if (oportunidade) {
-        // Popula o formulário quando os dados chegam
         form.reset({
             titulo: oportunidade.titulo,
             cliente_id: oportunidade.cliente_id,
@@ -222,16 +209,14 @@ export function OportunidadeDetalhePage() {
     }
   }, [oportunidade, form]);
 
-  // UseMemo (Seguro) - Calcula status visual ou progresso
-  // Exemplo de hook que causava o crash se estivesse após um return
+  // UseMemo (Seguro) - Este era o ponto crítico do erro anterior
   const progressoVisual = React.useMemo(() => {
      if (isNova) return 0;
      if (!oportunidade) return 0;
      
-     // Lógica de exemplo para cálculo visual
      switch(oportunidade.status) {
          case 'ganha': return 100;
-         case 'perdida': return 100; // Ou 0, dependendo da regra
+         case 'perdida': return 100;
          case 'cancelada': return 0;
          default: return oportunidade.probabilidade || 0;
      }
@@ -249,11 +234,10 @@ export function OportunidadeDetalhePage() {
   const isLoading = isLoadingOportunidade || isLoadingClientes;
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // 2. ZONA DE RENDERIZAÇÃO CONDICIONAL (DEPOIS DOS HOOKS)
+  // 2. ZONA DE RENDERIZAÇÃO CONDICIONAL (SAFE ZONE)
+  // Agora que todos os hooks foram chamados, podemos retornar loading ou erros
   // ---------------------------------------------------------------------------
 
-  // Se for edição e estiver carregando, mostra loading.
-  // Para 'nova', não bloqueamos por isLoadingOportunidade (que será false/disabled)
   if (!isNova && isLoadingOportunidade) {
     return (
       <AppLayout>
@@ -264,7 +248,6 @@ export function OportunidadeDetalhePage() {
     );
   }
 
-  // Se houve erro ao buscar
   if (!isNova && errorOportunidade) {
      return (
         <AppLayout>
@@ -308,7 +291,7 @@ export function OportunidadeDetalhePage() {
           </div>
           <div className="flex items-center gap-2">
             {!isNova && (
-               <Button variant="destructive" size="sm" variant="outline">
+               <Button size="sm" variant="destructive">
                  <Trash2 className="h-4 w-4 mr-2" /> Excluir
                </Button>
             )}
@@ -364,7 +347,7 @@ export function OportunidadeDetalhePage() {
                                                 <FormLabel className="flex items-center justify-between">
                                                     Cliente
                                                     <Button 
-                                                        size="xs" 
+                                                        size="sm" 
                                                         variant="link" 
                                                         className="h-auto p-0 text-primary"
                                                         type="button"
@@ -600,7 +583,7 @@ export function OportunidadeDetalhePage() {
                     </CardContent>
                 </Card>
 
-                {/* Área para Histórico ou Notas (Placeholder) */}
+                {/* Área para Histórico ou Notas */}
                 {!isNova && (
                     <Card>
                         <CardHeader>
