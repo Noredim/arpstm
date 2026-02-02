@@ -26,140 +26,104 @@ import { toast } from "@/hooks/use-toast";
 import type { Arp, Cliente, Oportunidade } from "@/lib/arp-types";
 import { getArpStatus, getTipoAdesao, isArpVigente } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { ExternalLink, Plus, Trash2, Loader2, RefreshCw } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, Plus, Trash2, Search, Database } from "lucide-react";
 
-// --- MOCKS DE DEFESA (FALLBACK DATA) ---
-// Usados apenas se a Store estiver vazia para evitar quebra de UI
+// --- DADOS DE FALLBACK (SEGURANÇA PARA DESENVOLVIMENTO) ---
+// Usados APENAS se a Store estiver vazia (ex: refresh da página)
 const MOCK_CLIENTES: Cliente[] = [
-  { id: "1", nome: "Prefeitura Municipal de Exemplo", cnpj: "00.000.000/0001-00", uf: "SP", cidade: "São Paulo" },
-  { id: "2", nome: "Empresa Pública de Tecnologia", cnpj: "11.111.111/0001-11", uf: "RJ", cidade: "Rio de Janeiro" }
+  { id: "1", nome: "Prefeitura Municipal de Exemplo (Mock)", cnpj: "00.000.000/0001-00", uf: "SP", cidade: "São Paulo" },
+  { id: "2", nome: "Empresa Pública de Tecnologia (Mock)", cnpj: "11.111.111/0001-11", uf: "RJ", cidade: "Rio de Janeiro" }
 ];
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const MOCK_ARPS: Arp[] = [
+    { 
+        id: "mock-arp-1", 
+        numeroArp: "001/2024", 
+        ano: 2024, 
+        orgaoGerenciador: "Prefeitura Mock", 
+        objeto: "Aquisição de Equipamentos", 
+        valorTotal: 100000, 
+        saldoTotal: 50000, 
+        dataAssinatura: new Date().toISOString(), 
+        dataPublicacao: new Date().toISOString(), 
+        validadeMeses: 12, 
+        itens: [],
+        nomeAta: "ATA 001/2024 - Equipamentos"
+    }
+];
 
 export default function OportunidadesPage() {
-  // 1. ACESSO SEGURO AO STORE (Reativo)
+  // 1. CONEXÃO DIRETA COM A STORE (SEM INTERMEDIÁRIOS)
   const { state, deleteOportunidade } = useArpStore();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
-  // Estados Locais de UI
+  // 2. UNIFICAÇÃO DE DADOS (STORE REAL > MOCKS)
+  // Se houver dados reais cadastrados na tela de Clientes, usa eles. Senão, usa Mock.
+  const clientesReais = React.useMemo(() => {
+    return state.clientes.length > 0 ? state.clientes : MOCK_CLIENTES;
+  }, [state.clientes]);
+
+  const arpsReais = React.useMemo(() => {
+    return state.arps.length > 0 ? state.arps : MOCK_ARPS;
+  }, [state.arps]);
+
+  const oportunidadesReais = state.oportunidades;
+
+  // 3. ESTADOS DE UI
   const [q, setQ] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const [arpId, setArpId] = React.useState("");
 
-  // 2. DATA FETCHING LOCAL (Via Closure - Evita getState/subscribe)
-  // Define as funções de busca DENTRO do componente para acessar o 'state' atual seguramente
-
-  const clientesAtuais = React.useMemo(() => {
-    return state.clientes.length > 0 ? state.clientes : MOCK_CLIENTES;
-  }, [state.clientes]);
-
-  const arpsAtuais = state.arps; // ARPs geralmente vêm carregadas, ou poderia ter mock também
-
-  const fetchOportunidadesLocal = async (): Promise<Oportunidade[]> => {
-    await delay(300); // Simula loading visual para feedback
-    return state.oportunidades;
-  };
-
-  const fetchClientesLocal = async (): Promise<Cliente[]> => {
-    await delay(200);
-    return clientesAtuais;
-  };
-
-  const fetchArpsLocal = async (): Promise<Arp[]> => {
-    return arpsAtuais;
-  };
-
-  // 3. QUERIES (Gerenciamento de Cache e Estado de Loading)
-  
-  const { 
-    data: oportunidadesData, 
-    isLoading: isLoadingOportunidades,
-    refetch: refetchOportunidades
-  } = useQuery({
-    queryKey: ["oportunidades"],
-    queryFn: fetchOportunidadesLocal,
-    initialData: state.oportunidades,
-    // Importante: garante que se a store mudar, o query atualiza
-    refetchOnMount: true,
-  });
-
-  const { data: clientesData } = useQuery({
-    queryKey: ["clientes"],
-    queryFn: fetchClientesLocal,
-    initialData: clientesAtuais,
-    refetchOnMount: true,
-  });
-
-  const { data: arpsData } = useQuery({
-    queryKey: ["arps"],
-    queryFn: fetchArpsLocal,
-    initialData: arpsAtuais,
-  });
-
-  // 4. SINCRONIZAÇÃO REATIVA (Substitui o subscribe quebrado)
-  // Quando o 'state' global muda (ex: salvou na outra tela), forçamos a UI a atualizar
-  React.useEffect(() => {
-    if (state.oportunidades.length !== (oportunidadesData?.length || 0)) {
-        refetchOportunidades();
-    }
-    // Força atualização dos clientes se a store mudar
-    if (state.clientes.length > 0 && clientesData !== state.clientes) {
-        queryClient.invalidateQueries({ queryKey: ["clientes"] });
-    }
-  }, [state.oportunidades, state.clientes, oportunidadesData, clientesData, refetchOportunidades, queryClient]);
-
-  // Normalização e Indexação (Performance O(1))
-  const oportunidades = oportunidadesData || [];
-  const clientes = clientesData || [];
-  const arps = arpsData || [];
-
+  // 4. INDEXAÇÃO PARA PERFORMANCE O(1)
   const clientesById = React.useMemo(() => {
     const map: Record<string, Cliente> = {};
-    clientes.forEach(c => { map[c.id] = c; });
+    clientesReais.forEach(c => { map[c.id] = c; });
     return map;
-  }, [clientes]);
-  
+  }, [clientesReais]);
+
   const arpsById = React.useMemo(() => {
     const map: Record<string, Arp> = {};
-    arps.forEach(a => { map[a.id] = a; });
+    arpsReais.forEach(a => { map[a.id] = a; });
     return map;
-  }, [arps]);
+  }, [arpsReais]);
 
-  const vigentes = React.useMemo(() => arps.filter(isArpVigente), [arps]);
+  const vigentes = React.useMemo(() => arpsReais.filter(isArpVigente), [arpsReais]);
 
-  // Filtro de Busca
+  // 5. LÓGICA DE FILTRO E BUSCA
   const list = React.useMemo(() => {
     const query = q.trim().toLowerCase();
-    if (!query) return oportunidades;
     
-    return oportunidades.filter((o) => {
-      // Defesa: Tenta pegar do mapa, senão tenta do mock local
-      const c = clientesById[o.clienteId] || clientes.find(cli => cli.id === o.clienteId);
+    // Filtra lista
+    const filtered = oportunidadesReais.filter((o) => {
+      // Resolução de Relacionamentos
+      const c = clientesById[o.clienteId];
       const a = arpsById[o.arpId];
       
-      const nomeCliente = c?.nome || "";
+      // Fallback seguro para strings
+      const codigo = o.codigo?.toString() || "";
       const nomeAta = a?.nomeAta || "";
+      const nomeCliente = c?.nome || "";
 
-      return [o.codigo?.toString(), nomeAta, nomeCliente]
-        .some((v) => (v ?? "").toLowerCase().includes(query));
+      if (!query) return true;
+
+      return [codigo, nomeAta, nomeCliente]
+        .some((v) => v.toLowerCase().includes(query));
     });
-  }, [q, oportunidades, clientesById, arpsById, clientes]);
 
-  // --- ACTIONS ---
+    return filtered;
+  }, [q, oportunidadesReais, clientesById, arpsById]);
+
+  // --- HANDLERS ---
 
   function openCreate() {
     if (vigentes.length === 0) {
       toast({
         title: "Nenhuma ATA vigente",
-        description: "É necessário haver uma ATA com validade ativa para criar oportunidades.",
+        description: "É necessário cadastrar uma ATA com validade ativa primeiro.",
         variant: "destructive",
       });
       return;
     }
-    // Pré-seleciona a primeira ATA para facilitar
     setArpId(vigentes[0]?.id ?? "");
     setOpen(true);
   }
@@ -173,22 +137,13 @@ export default function OportunidadesPage() {
     navigate(`/oportunidades/nova?arpId=${encodeURIComponent(arpId)}`);
   }
 
-  async function remove(o: Oportunidade) {
+  function remove(o: Oportunidade) {
     if (!confirm("Tem certeza que deseja remover esta oportunidade?")) return;
     deleteOportunidade(o.id);
-    // Atualização Otimista
-    await queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
     toast({ title: "Oportunidade removida", description: `Código ${o.codigo}` });
   }
 
-  const handleRefresh = () => {
-    refetchOportunidades();
-    queryClient.invalidateQueries({ queryKey: ["clientes"] });
-    queryClient.invalidateQueries({ queryKey: ["arps"] });
-    toast({ description: "Lista atualizada." });
-  };
-
-  // --- RENDERIZAÇÃO ---
+  // --- RENDER ---
 
   return (
     <AppLayout>
@@ -198,33 +153,36 @@ export default function OportunidadesPage() {
           <div className="space-y-1">
             <div className="text-lg font-semibold tracking-tight">Oportunidades de adesão</div>
             <div className="text-sm text-muted-foreground">
-              Gerencie as oportunidades e contratos.
+              Gerencie seus processos de venda e adesão a ATAs.
             </div>
           </div>
-          <Button className="rounded-2xl" onClick={openCreate}>
+          <Button className="rounded-2xl shadow-sm" onClick={openCreate}>
             <Plus className="mr-2 size-4" />
             Nova oportunidade
           </Button>
         </div>
 
-        {/* Painel Principal */}
-        <Card className="rounded-3xl border p-4">
-          <div className="flex items-center gap-2 mb-4">
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar por código, cliente ou ATA..."
-                className="h-11 rounded-2xl sm:max-w-md"
-              />
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={handleRefresh} 
-                title="Sincronizar dados"
-                disabled={isLoadingOportunidades}
-              >
-                  <RefreshCw className={`size-4 ${isLoadingOportunidades ? 'animate-spin' : ''}`} />
-              </Button>
+        {/* Tabela Principal */}
+        <Card className="rounded-3xl border p-4 shadow-sm">
+          {/* Barra de Ferramentas */}
+          <div className="flex items-center justify-between mb-4">
+              <div className="relative w-full sm:max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Buscar por código, cliente ou ATA..."
+                    className="h-11 rounded-2xl pl-9 bg-muted/20 border-transparent focus:bg-background focus:border-input transition-all"
+                />
+              </div>
+              
+              {/* Indicador de Fonte de Dados (Debug Visual Útil) */}
+              <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground px-3 py-1 bg-muted/30 rounded-full">
+                 <Database className="h-3 w-3" />
+                 <span>
+                    {state.clientes.length > 0 ? "Dados Reais Integrados" : "Modo de Desenvolvimento (Mocks)"}
+                 </span>
+              </div>
           </div>
 
           <div className="mt-4 overflow-hidden rounded-2xl border">
@@ -233,39 +191,32 @@ export default function OportunidadesPage() {
                 <TableRow className="bg-muted/40">
                   <TableHead className="w-[100px]">Código</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>ATA</TableHead>
+                  <TableHead>ATA de Origem</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead className="w-[100px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoadingOportunidades && list.length === 0 ? (
-                    <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
-                            <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Carregando...
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                ) : list.length === 0 ? (
+                {list.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                      {oportunidades.length === 0 
-                        ? "Nenhuma oportunidade cadastrada." 
-                        : "Nenhum resultado encontrado."}
+                    <TableCell colSpan={5} className="py-16 text-center text-sm text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                            <Search className="h-6 w-6 opacity-20" />
+                        </div>
+                        <p>{oportunidadesReais.length === 0 ? "Nenhuma oportunidade cadastrada." : "Nenhum resultado encontrado."}</p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
                   list.map((o) => {
-                    // Resolução de Relacionamentos (Robustez)
-                    const cliente = clientesById[o.clienteId] || clientes.find(c => c.id === o.clienteId);
-                    const arp = arpsById[o.arpId] || arps.find(a => a.id === o.arpId);
+                    const cliente = clientesById[o.clienteId];
+                    const arp = arpsById[o.arpId];
                     const tipo = getTipoAdesao(arp, o.clienteId);
                     
                     return (
-                      <TableRow key={o.id} className="hover:bg-muted/30">
-                        <TableCell className="font-semibold tabular-nums">
+                      <TableRow key={o.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-semibold tabular-nums text-foreground">
                             #{o.codigo}
                         </TableCell>
                         <TableCell className="font-medium">
@@ -273,35 +224,30 @@ export default function OportunidadesPage() {
                                 <div className="flex flex-col">
                                     <span className="text-sm font-semibold text-foreground/90">{cliente.nome}</span>
                                     {cliente.cidade && (
-                                        <span className="text-[11px] text-muted-foreground uppercase">
+                                        <span className="text-[11px] text-muted-foreground uppercase flex items-center gap-1">
                                             {cliente.cidade} - {cliente.uf}
                                         </span>
                                     )}
                                 </div>
                             ) : (
-                                // Estado de Falha Graciosa (Graceful Degradation)
-                                <div className="flex flex-col gap-1">
-                                    <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                                        <Loader2 className="h-3 w-3 animate-spin" /> Sincronizando...
-                                    </span>
-                                    <span className="text-[10px] text-muted-foreground font-mono" title={o.clienteId}>
-                                        ID: {o.clienteId?.slice(0,8) || "?"}
-                                    </span>
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm text-muted-foreground italic">Cliente não vinculado</span>
+                                    {o.clienteId && <span className="text-[10px] text-muted-foreground/50 font-mono">ID: {o.clienteId.slice(0,6)}...</span>}
                                 </div>
                             )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm truncate max-w-[180px]" title={arp?.nomeAta}>
-                                {arp?.nomeAta ?? "—"}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-sm font-medium truncate max-w-[220px]" title={arp?.nomeAta}>
+                                {arp?.nomeAta || <span className="text-destructive">ATA Removida</span>}
                             </span>
                             {arp && (
                               <Badge
                                 variant="outline"
                                 className={
                                   getArpStatus(arp) === "VIGENTE"
-                                    ? "w-fit border-emerald-200 text-emerald-700 bg-emerald-50 text-[10px] px-1.5 h-5"
-                                    : "w-fit border-rose-200 text-rose-700 bg-rose-50 text-[10px] px-1.5 h-5"
+                                    ? "w-fit border-emerald-200 text-emerald-700 bg-emerald-50 text-[10px] px-2 py-0 h-5"
+                                    : "w-fit border-rose-200 text-rose-700 bg-rose-50 text-[10px] px-2 py-0 h-5"
                                 }
                               >
                                 {getArpStatus(arp)}
@@ -323,15 +269,15 @@ export default function OportunidadesPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="inline-flex items-center justify-end gap-1">
-                            <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+                            <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground hover:text-primary">
                               <Link to={`/oportunidades/${o.id}`}>
-                                <ExternalLink className="size-4 text-muted-foreground" />
+                                <ExternalLink className="size-4" />
                               </Link>
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10"
+                              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                               onClick={() => remove(o)}
                             >
                               <Trash2 className="size-4" />
@@ -360,7 +306,7 @@ export default function OportunidadesPage() {
   );
 }
 
-// --- SUB-COMPONENTE: DIALOG SIMPLIFICADO ---
+// --- SUB-COMPONENTE: DIALOG DE INICIALIZAÇÃO ---
 
 function CreateOportunidadeDialog({
   open,
@@ -379,43 +325,44 @@ function CreateOportunidadeDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md rounded-3xl">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-bold tracking-tight">Nova Oportunidade</DialogTitle>
+      <DialogContent className="max-w-md rounded-3xl p-6">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="text-xl font-bold tracking-tight">Iniciar Oportunidade</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-6 py-4">
+        <div className="grid gap-6">
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Selecione a ATA de Origem</Label>
+            <Label className="text-sm font-semibold text-foreground/80">Selecione a ATA de Origem</Label>
             <Select value={arpId} onValueChange={onArpId} disabled={vigentes.length === 0}>
-              <SelectTrigger className="h-12 rounded-2xl bg-muted/20 border-transparent focus:bg-background focus:border-input transition-all">
+              <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-transparent focus:bg-background focus:border-primary/20 transition-all font-medium">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
                 {vigentes.map((a) => (
-                  <SelectItem key={a.id} value={a.id} className="cursor-pointer">
+                  <SelectItem key={a.id} value={a.id} className="cursor-pointer py-3">
                     <span className="font-medium">{a.nomeAta}</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">Saldo: R$ {a.saldoTotal?.toLocaleString('pt-BR')}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {vigentes.length === 0 ? (
-                <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-2 rounded-lg">
-                    <span>⚠️ Nenhuma ATA vigente encontrada.</span>
+                <div className="flex items-center gap-2 text-xs text-destructive font-medium bg-destructive/10 p-3 rounded-xl border border-destructive/20">
+                    <span>⚠️ Nenhuma ATA vigente encontrada para iniciar.</span>
                 </div>
             ) : (
                 <p className="text-xs text-muted-foreground px-1">
-                    O cliente contratante será vinculado na próxima etapa (Detalhamento).
+                    O vínculo com o Cliente Contratante será feito na próxima tela.
                 </p>
             )}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-end mt-2">
-            <Button variant="ghost" className="rounded-2xl" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" className="rounded-2xl hover:bg-muted/50" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
             <Button 
-                className="rounded-2xl px-8" 
+                className="rounded-2xl px-8 font-semibold shadow-md" 
                 onClick={onCreate}
                 disabled={!arpId}
             >
