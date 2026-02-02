@@ -29,36 +29,24 @@ import { useArpStore } from "@/store/arp-store";
 import { ExternalLink, Plus, Trash2, Loader2, RefreshCw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-// --- SERVIÇOS DE DADOS (DATA FETCHING MOCKADO) ---
+// --- SERVIÇOS DE DADOS (CONECTADOS DIRETAMENTE À STORE) ---
 
-// Função auxiliar para simular delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// A "API" agora reflete exatamente o que está na Store global (onde os cadastros são salvos)
 const fetchClientes = async (): Promise<Cliente[]> => {
-    await delay(300);
-    const storeState = useArpStore.getState();
-    // Retorna da store ou mock se vazio
-    if (storeState.clientes.length > 0) return storeState.clientes;
-    return [
-        { id: "1", nome: "Prefeitura Municipal de Exemplo", cnpj: "00.000.000/0001-00", uf: "SP", cidade: "São Paulo" },
-        { id: "2", nome: "Empresa Pública de Tecnologia", cnpj: "11.111.111/0001-11", uf: "RJ", cidade: "Rio de Janeiro" }
-    ] as Cliente[];
+    await delay(200); 
+    // IMPORTANTE: Removemos mocks fixos. A fonte da verdade é a Store.
+    return useArpStore.getState().clientes;
 };
 
 const fetchArps = async (): Promise<Arp[]> => {
-    // Simula API rápida
-    const storeState = useArpStore.getState();
-    return storeState.arps;
+    return useArpStore.getState().arps;
 };
 
 const fetchOportunidades = async (): Promise<Oportunidade[]> => {
-    await delay(300); // Simula latência de rede para testar loading state
-    const storeState = useArpStore.getState();
-    
-    // IMPORTANTE: Aqui você conectaria com seu backend real (Supabase/API).
-    // Como estamos usando mock local, retornamos o estado da store.
-    // Mas o segredo é que o componente vai REAGIR a essa chamada quando invalidarmos a query.
-    return storeState.oportunidades;
+    await delay(200);
+    return useArpStore.getState().oportunidades;
 };
 
 // --- PÁGINA PRINCIPAL ---
@@ -73,25 +61,25 @@ export default function OportunidadesPage() {
   const [open, setOpen] = React.useState(false);
   const [arpId, setArpId] = React.useState("");
 
-  // 1. QUERIES (Data Fetching Centralizado)
+  // --- QUERIES (Sincronização Agressiva) ---
   
-  // Busca Oportunidades (CORREÇÃO: Agora usamos useQuery para a lista principal também)
   const { 
     data: oportunidadesData, 
     isLoading: isLoadingOportunidades,
-    refetch: refetchOportunidades 
+    refetch: refetchAll 
   } = useQuery({
     queryKey: ["oportunidades"],
     queryFn: fetchOportunidades,
-    // Se a store já tiver dados, usamos como inicial para não piscar, 
-    // mas o refetch garantirá a atualização se vier de outra tela
-    initialData: state.oportunidades.length > 0 ? state.oportunidades : undefined,
+    initialData: state.oportunidades,
+    refetchOnMount: true, // Garante dados frescos ao voltar da tela de detalhes
+    refetchOnWindowFocus: true
   });
 
-  const { data: clientesData, isLoading: isLoadingClientes } = useQuery({
+  const { data: clientesData } = useQuery({
     queryKey: ["clientes"],
     queryFn: fetchClientes,
-    initialData: state.clientes.length > 0 ? state.clientes : undefined,
+    initialData: state.clientes, // Usa o estado atual como seed
+    refetchOnMount: true,
   });
 
   const { data: arpsData } = useQuery({
@@ -100,12 +88,19 @@ export default function OportunidadesPage() {
     initialData: state.arps,
   });
 
+  // Effect para garantir sincronia quando a Store muda externamente
+  React.useEffect(() => {
+    // Se a store mudar (ex: usuário navegou, salvou e voltou), invalidamos o cache
+    queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
+    queryClient.invalidateQueries({ queryKey: ["clientes"] });
+  }, [state.oportunidades.length, state.clientes.length, queryClient]);
+
   // Normalização de dados
   const oportunidades = oportunidadesData || [];
   const clientes = clientesData || [];
   const arps = arpsData || [];
 
-  // Indexação para performance
+  // Indexação
   const clientesById = React.useMemo(
     () => Object.fromEntries(clientes.map((c) => [c.id, c])),
     [clientes]
@@ -118,19 +113,20 @@ export default function OportunidadesPage() {
 
   const vigentes = React.useMemo(() => arps.filter(isArpVigente), [arps]);
 
-  // Filtro de Busca
+  // Filtro
   const list = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return oportunidades;
     
     return oportunidades.filter((o) => {
-      const a = arpsById[o.arpId];
-      const c = clientesById[o.clienteId];
-      // Verifica segurança dos dados antes de acessar propriedades
+      // Fallback de segurança: tenta buscar no mapa, se falhar tenta direto no state (caso extremo)
+      const c = clientesById[o.clienteId] || state.clientes.find(cli => cli.id === o.clienteId);
+      const a = arpsById[o.arpId] || state.arps.find(at => at.id === o.arpId);
+      
       return [o.codigo?.toString(), a?.nomeAta, c?.nome]
         .some((v) => (v ?? "").toLowerCase().includes(query));
     });
-  }, [q, oportunidades, clientesById, arpsById]);
+  }, [q, oportunidades, clientesById, arpsById, state.clientes, state.arps]);
 
   // --- ACTIONS ---
 
@@ -158,22 +154,15 @@ export default function OportunidadesPage() {
 
   async function remove(o: Oportunidade) {
     if (!confirm("Tem certeza que deseja remover esta oportunidade?")) return;
-    
-    // Executa a remoção na store
     deleteOportunidade(o.id);
-    
-    // Notifica sucesso
     toast({ title: "Oportunidade removida", description: `Código ${o.codigo}` });
-    
-    // ATUALIZA A LISTA VISUAL (Invalida o cache para forçar refresh)
     await queryClient.invalidateQueries({ queryKey: ["oportunidades"] });
   }
 
   const handleRefresh = () => {
-    refetchOportunidades();
+    refetchAll();
     queryClient.invalidateQueries({ queryKey: ["clientes"] });
-    queryClient.invalidateQueries({ queryKey: ["arps"] });
-    toast({ description: "Lista atualizada com sucesso." });
+    toast({ description: "Lista sincronizada." });
   };
 
   // --- RENDER ---
@@ -186,7 +175,7 @@ export default function OportunidadesPage() {
           <div className="space-y-1">
             <div className="text-lg font-semibold tracking-tight">Oportunidades de adesão</div>
             <div className="text-sm text-muted-foreground">
-              Gerencie as oportunidades de negócio.
+              Gerencie as oportunidades e contratos.
             </div>
           </div>
           <Button className="rounded-2xl" onClick={openCreate}>
@@ -208,7 +197,7 @@ export default function OportunidadesPage() {
                 variant="ghost" 
                 size="icon" 
                 onClick={handleRefresh} 
-                title="Atualizar dados"
+                title="Sincronizar dados"
                 disabled={isLoadingOportunidades}
               >
                   <RefreshCw className={`size-4 ${isLoadingOportunidades ? 'animate-spin' : ''}`} />
@@ -232,7 +221,7 @@ export default function OportunidadesPage() {
                         <TableCell colSpan={5} className="h-24 text-center">
                             <div className="flex items-center justify-center gap-2 text-muted-foreground">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Carregando oportunidades...
+                                Carregando...
                             </div>
                         </TableCell>
                     </TableRow>
@@ -241,13 +230,14 @@ export default function OportunidadesPage() {
                     <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                       {oportunidades.length === 0 
                         ? "Nenhuma oportunidade cadastrada." 
-                        : "Nenhum resultado encontrado para a busca."}
+                        : "Nenhum resultado encontrado."}
                     </TableCell>
                   </TableRow>
                 ) : (
                   list.map((o) => {
-                    const arp = arpsById[o.arpId];
-                    const cliente = clientesById[o.clienteId];
+                    // Busca Prioritária: Cache -> Store Direta
+                    const arp = arpsById[o.arpId] || state.arps.find(a => a.id === o.arpId);
+                    const cliente = clientesById[o.clienteId] || state.clientes.find(c => c.id === o.clienteId);
                     const tipo = getTipoAdesao(arp, o.clienteId);
                     
                     return (
@@ -266,10 +256,10 @@ export default function OportunidadesPage() {
                                     )}
                                 </div>
                             ) : (
-                                <span className="flex items-center gap-1 text-amber-600 text-xs font-medium bg-amber-50 px-2 py-1 rounded-md w-fit">
-                                    <Loader2 className="h-3 w-3 animate-spin" /> 
-                                    Sincronizando...
-                                </span>
+                                <div className="flex flex-col text-muted-foreground italic text-xs">
+                                    <span>Cliente não definido</span>
+                                    {o.clienteId && <span className="text-[10px] opacity-50">ID: {o.clienteId.substring(0,6)}...</span>}
+                                </div>
                             )}
                         </TableCell>
                         <TableCell>
@@ -342,7 +332,7 @@ export default function OportunidadesPage() {
   );
 }
 
-// --- SUB-COMPONENTE: DIALOG ---
+// --- SUB-COMPONENTE: DIALOG (Simplificado - Apenas ARP) ---
 
 function CreateOportunidadeDialog({
   open,
@@ -387,7 +377,7 @@ function CreateOportunidadeDialog({
                 </div>
             ) : (
                 <p className="text-xs text-muted-foreground px-1">
-                    O cliente contratante será definido na próxima etapa.
+                    O cliente contratante será definido na próxima etapa de detalhamento.
                 </p>
             )}
           </div>
