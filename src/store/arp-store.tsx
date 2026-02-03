@@ -14,10 +14,12 @@ import type {
   OportunidadeItem,
   OportunidadeKit,
   OportunidadeKitItem,
+  OportunidadeStatus,
+  OportunidadeTemperatura,
   UserRole,
   Usuario,
 } from "@/lib/arp-types";
-import { digitsOnly, nowIso, uid } from "@/lib/arp-utils";
+import { digitsOnly, nowIso, todayIso, uid } from "@/lib/arp-utils";
 import { syncIbgeLocalidades } from "@/lib/ibge-sync";
 import {
   computeUtilizadoPorItem,
@@ -101,6 +103,47 @@ function seedEstadosBR(): Estado[] {
   }));
 }
 
+function addDaysIso(dateIso: string, days: number) {
+  const [y, m, d] = dateIso.split("-").map((n) => Number(n));
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  dt.setDate(dt.getDate() + days);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function ensureOportunidadeDefaults(o: any, fallbackSeq: number): Oportunidade {
+  const status = (o.status ?? "ABERTA").toUpperCase();
+  const normStatus: OportunidadeStatus =
+    status === "GANHAMOS" ? "GANHAMOS" : status === "PERDEMOS" ? "PERDEMOS" : "ABERTA";
+
+  const temperatura = (o.temperatura ?? "MORNA").toUpperCase();
+  const normTemp: OportunidadeTemperatura =
+    temperatura === "FRIA" ? "FRIA" : temperatura === "QUENTE" ? "QUENTE" : "MORNA";
+
+  const dataAbertura = String(o.dataAbertura ?? todayIso());
+  const prazoFechamento = String(o.prazoFechamento ?? addDaysIso(dataAbertura, 60));
+
+  return {
+    id: String(o.id ?? uid("opp")),
+    codigo: Number(o.codigo ?? fallbackSeq) || fallbackSeq,
+    titulo: String(o.titulo ?? o.nome ?? "").trim() || `Oportunidade ${fallbackSeq}`,
+    descricao: String(o.descricao ?? ""),
+    temperatura: normTemp,
+    dataAbertura,
+    prazoFechamento,
+    clienteId: String(o.clienteId ?? ""),
+    arpId: String(o.arpId ?? ""),
+    status: normStatus,
+    itens: (o.itens ?? []) as OportunidadeItem[],
+    kits: (o.kits ?? []) as OportunidadeKit[],
+    kitItens: (o.kitItens ?? []) as OportunidadeKitItem[],
+    criadoEm: o.criadoEm ?? o.criado_at ?? undefined,
+    atualizadoEm: o.atualizadoEm ?? o.updated_at ?? undefined,
+  };
+}
+
 function loadInitial(): ArpState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -127,13 +170,15 @@ function loadInitial(): ArpState {
     const integrationLogs = ((parsed as any).integrationLogs as LogIntegracao[] | undefined) ?? [];
     const usuarios = ((parsed as any).usuarios as Usuario[] | undefined) ?? seedUsuarios().usuarios;
     const currentUserEmail =
-      ((parsed as any).currentUserEmail as string | undefined) ??
-      usuarios[0]?.email ??
-      MASTER_EMAIL;
+      ((parsed as any).currentUserEmail as string | undefined) ?? usuarios[0]?.email ?? MASTER_EMAIL;
 
     const ensured = usuarios.some((u) => u.email.toLowerCase() === MASTER_EMAIL.toLowerCase())
       ? usuarios
       : [seedUsuarios().usuarios[0], ...usuarios];
+
+    const oportunidadeSeq = parsed.oportunidadeSeq ?? 0;
+    const oportunidadesRaw = (parsed.oportunidades ?? []) as any[];
+    const oportunidades = oportunidadesRaw.map((o) => ensureOportunidadeDefaults(o, oportunidadeSeq));
 
     return {
       clientes: parsed.clientes ?? [],
@@ -145,15 +190,8 @@ function loadInitial(): ArpState {
       currentUserEmail,
       kits: (parsed as any).kits ?? [],
       kitItems: (parsed as any).kitItems ?? [],
-      oportunidades: (parsed.oportunidades ?? []).map((o: any) => ({
-        ...o,
-        status: o.status ?? "ABERTA",
-        itens: o.itens ?? [],
-        kits: o.kits ?? [],
-        kitItens: o.kitItens ?? [],
-      })),
-
-      oportunidadeSeq: parsed.oportunidadeSeq ?? 0,
+      oportunidades,
+      oportunidadeSeq,
     };
   } catch {
     const seedUser = seedUsuarios();
@@ -259,33 +297,9 @@ type ArpStore = {
   deleteKitItem: (kitId: string, kitItemId: string) => void;
 
   // Oportunidades
-  createOportunidade: (data: Omit<Oportunidade, "id" | "codigo" | "itens">) => Oportunidade;
-  updateOportunidade: (id: string, patch: Partial<Omit<Oportunidade, "id" | "codigo" | "itens">>) => void;
-  setOportunidadeItens: (id: string, itens: OportunidadeItem[]) => void;
-
-  addOportunidadeKit: (
-    oportunidadeId: string,
-    data: Omit<OportunidadeKit, "id" | "oportunidadeId">,
-  ) => OportunidadeKit;
-  updateOportunidadeKit: (
-    oportunidadeId: string,
-    oportunidadeKitId: string,
-    patch: Partial<Omit<OportunidadeKit, "id" | "oportunidadeId">>,
-  ) => void;
-  deleteOportunidadeKit: (oportunidadeId: string, oportunidadeKitId: string) => void;
-
+  createOportunidadeDraft: (params: { arpId: string }) => Oportunidade;
+  saveOportunidade: (params: { draft: Omit<Oportunidade, "codigo"> & { codigo?: number } }) => Oportunidade;
   deleteOportunidade: (id: string) => void;
-
-  addOportunidadeItem: (
-    oportunidadeId: string,
-    data: Omit<OportunidadeItem, "id" | "oportunidadeId">,
-  ) => OportunidadeItem;
-  updateOportunidadeItem: (
-    oportunidadeId: string,
-    itemId: string,
-    patch: Partial<Omit<OportunidadeItem, "id" | "oportunidadeId">>,
-  ) => void;
-  deleteOportunidadeItem: (oportunidadeId: string, itemId: string) => void;
 };
 
 const ArpStoreContext = React.createContext<ArpStore | null>(null);
@@ -394,7 +408,6 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     function currentUser(): Usuario {
-
       const found = state.usuarios.find((u) => u.email.toLowerCase() === state.currentUserEmail.toLowerCase());
       return (
         found ??
@@ -435,9 +448,18 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       return kitItens;
     }
 
+    function nextCodigoDisponivel() {
+      const used = new Set<number>(state.oportunidades.map((o) => Number(o.codigo)).filter(Boolean));
+      for (let n = 1; n <= 99999; n++) {
+        if (!used.has(n)) return n;
+      }
+      return Math.min(99999, Math.max(1, state.oportunidadeSeq + 1));
+    }
+
     return {
       state,
 
+      // Usuários
       getCurrentUser: () => currentUser(),
       setCurrentUserEmail: (email) => {
         setState((s) => ({ ...s, currentUserEmail: email }));
@@ -482,9 +504,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           usuarios: s.usuarios.map((u) =>
-            u.id === id
-              ? { ...u, ...patch, email: nextEmail ?? u.email, atualizadoEm: nowIso() }
-              : u,
+            u.id === id ? { ...u, ...patch, email: nextEmail ?? u.email, atualizadoEm: nowIso() } : u,
           ),
         }));
       },
@@ -499,12 +519,11 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           usuarios: s.usuarios.filter((u) => u.id !== id),
           currentUserEmail:
-            s.currentUserEmail.toLowerCase() === target.email.toLowerCase()
-              ? MASTER_EMAIL
-              : s.currentUserEmail,
+            s.currentUserEmail.toLowerCase() === target.email.toLowerCase() ? MASTER_EMAIL : s.currentUserEmail,
         }));
       },
 
+      // Integração IBGE
       syncIbgeLocalidades: async (params) => {
         const res = await syncIbgeLocalidades({
           role: currentUser().role === "ADMIN" ? "ADMIN" : "USER",
@@ -528,6 +547,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return res.resumo;
       },
 
+      // Clientes
       createCliente: (data) => {
         requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const cliente: Cliente = {
@@ -565,6 +585,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
+      // Estados
       createEstado: (data) => {
         requireRole(["ADMIN", "GESTOR"]);
         const sigla = (data.sigla ?? "").trim().toUpperCase();
@@ -613,6 +634,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, estados: s.estados.filter((e) => e.id !== id) }));
       },
 
+      // Cidades
       createCidade: (data) => {
         requireRole(["ADMIN", "GESTOR"]);
         const nome = (data.nome ?? "").trim();
@@ -650,26 +672,14 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           throw new Error("Cidade só pode ser movida para um estado ativo.");
         }
         const key = normKey(nextNome);
-        if (
-          state.cidades.some(
-            (c) => c.id !== id && c.estadoId === nextEstadoId && normKey(c.nome) === key,
-          )
-        ) {
+        if (state.cidades.some((c) => c.id !== id && c.estadoId === nextEstadoId && normKey(c.nome) === key)) {
           throw new Error("Já existe uma cidade com este nome neste estado.");
         }
 
         setState((s) => ({
           ...s,
           cidades: s.cidades.map((c) =>
-            c.id === id
-              ? {
-                  ...c,
-                  ...patch,
-                  nome: nextNome,
-                  estadoId: nextEstadoId,
-                  atualizadoEm: nowIso(),
-                }
-              : c,
+            c.id === id ? { ...c, ...patch, nome: nextNome, estadoId: nextEstadoId, atualizadoEm: nowIso() } : c,
           ),
         }));
       },
@@ -678,6 +688,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, cidades: s.cidades.filter((c) => c.id !== id) }));
       },
 
+      // ARPs
       createArp: (data) => {
         requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const arp: Arp = {
@@ -717,9 +728,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             a.id === arpId
               ? {
                   ...a,
-                  participantes: a.participantes.includes(clienteId)
-                    ? a.participantes
-                    : [...a.participantes, clienteId],
+                  participantes: a.participantes.includes(clienteId) ? a.participantes : [...a.participantes, clienteId],
                 }
               : a,
           ),
@@ -728,11 +737,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       removeParticipante: (arpId, clienteId) => {
         setState((s) => ({
           ...s,
-          arps: s.arps.map((a) =>
-            a.id === arpId
-              ? { ...a, participantes: a.participantes.filter((id) => id !== clienteId) }
-              : a,
-          ),
+          arps: s.arps.map((a) => (a.id === arpId ? { ...a, participantes: a.participantes.filter((id) => id !== clienteId) } : a)),
         }));
       },
 
@@ -740,9 +745,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         const lote: ArpLote = { id: uid("lote"), arpId, itens: [], ...data };
         setState((s) => ({
           ...s,
-          arps: s.arps.map((a) =>
-            a.id === arpId ? { ...a, lotes: [...a.lotes, lote] } : a,
-          ),
+          arps: s.arps.map((a) => (a.id === arpId ? { ...a, lotes: [...a.lotes, lote] } : a)),
         }));
         return lote;
       },
@@ -750,18 +753,14 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           arps: s.arps.map((a) =>
-            a.id === arpId
-              ? { ...a, lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, ...patch } : l)) }
-              : a,
+            a.id === arpId ? { ...a, lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, ...patch } : l)) } : a,
           ),
         }));
       },
       deleteLote: (arpId, loteId) => {
         setState((s) => ({
           ...s,
-          arps: s.arps.map((a) =>
-            a.id === arpId ? { ...a, lotes: a.lotes.filter((l) => l.id !== loteId) } : a,
-          ),
+          arps: s.arps.map((a) => (a.id === arpId ? { ...a, lotes: a.lotes.filter((l) => l.id !== loteId) } : a)),
         }));
       },
 
@@ -775,7 +774,6 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
 
           const nextKitItems = s.kitItems.filter((ki) => !removedIds.includes(ki.arpItemId));
 
-          // recompute kitItens para todas oportunidades com base no novo kitItems
           function recomputeKitItens(oportunidadeId: string, kits: OportunidadeKit[]) {
             const byKitId: Record<string, KitItem[]> = {};
             for (const ki of nextKitItems) (byKitId[ki.kitId] ??= []).push(ki);
@@ -807,10 +805,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             ...s,
             arps: s.arps.map((a) => {
               if (a.id !== arpId) return a;
-              return {
-                ...a,
-                lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens } : l)),
-              };
+              return { ...a, lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens } : l)) };
             }),
             kitItems: nextKitItems,
             oportunidades,
@@ -828,14 +823,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           arps: s.arps.map((a) =>
-            a.id === arpId
-              ? {
-                  ...a,
-                  lotes: a.lotes.map((l) =>
-                    l.id === loteId ? { ...l, itens: [...l.itens, newItem] } : l,
-                  ),
-                }
-              : a,
+            a.id === arpId ? { ...a, lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens: [...l.itens, newItem] } : l)) } : a,
           ),
         }));
         return newItem;
@@ -853,13 +841,11 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                       ...l,
                       itens: l.itens.map((it) => {
                         if (it.id !== itemId) return it;
-                        const next = {
+                        return {
                           ...it,
                           ...(patch as any),
-                          equipamentos:
-                            (patch as any).equipamentos ?? (it as any).equipamentos ?? [],
+                          equipamentos: (patch as any).equipamentos ?? (it as any).equipamentos ?? [],
                         } as ArpItem;
-                        return next;
                       }),
                     };
                   }),
@@ -870,10 +856,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       },
       deleteItem: (arpId, loteId, itemId) => {
         setState((s) => {
-          // Remove também kitItems que apontam para esse item
           const kitItems = s.kitItems.filter((ki) => ki.arpItemId !== itemId);
-
-          // Recalcula kitItens das oportunidades que usam kits afetados
           const affectedKitIds = new Set(s.kitItems.filter((ki) => ki.arpItemId === itemId).map((ki) => ki.kitId));
 
           const oportunidades = s.oportunidades.map((o) => {
@@ -887,20 +870,10 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             ...s,
             arps: s.arps.map((a) =>
               a.id === arpId
-                ? {
-                    ...a,
-                    lotes: a.lotes.map((l) =>
-                      l.id === loteId
-                        ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) }
-                        : l,
-                    ),
-                  }
+                ? { ...a, lotes: a.lotes.map((l) => (l.id === loteId ? { ...l, itens: l.itens.filter((it) => it.id !== itemId) } : l)) }
                 : a,
             ),
-            oportunidades: oportunidades.map((o) => ({
-              ...o,
-              itens: (o.itens ?? []).filter((oi) => oi.arpItemId !== itemId),
-            })),
+            oportunidades: oportunidades.map((o) => ({ ...o, itens: (o.itens ?? []).filter((oi) => oi.arpItemId !== itemId) })),
             kitItems,
           };
         });
@@ -946,9 +919,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                     const equipamentos = (it as any).equipamentos ?? [];
                     return {
                       ...(it as any),
-                      equipamentos: equipamentos.map((e: ArpItemEquipamento) =>
-                        e.id === equipamentoId ? { ...e, ...patch } : e,
-                      ),
+                      equipamentos: equipamentos.map((e: ArpItemEquipamento) => (e.id === equipamentoId ? { ...e, ...patch } : e)),
                     };
                   }),
                 };
@@ -971,10 +942,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
                   itens: l.itens.map((it) => {
                     if (it.id !== arpItemId) return it;
                     const equipamentos = (it as any).equipamentos ?? [];
-                    return {
-                      ...(it as any),
-                      equipamentos: equipamentos.filter((e: ArpItemEquipamento) => e.id !== equipamentoId),
-                    };
+                    return { ...(it as any), equipamentos: equipamentos.filter((e: ArpItemEquipamento) => e.id !== equipamentoId) };
                   }),
                 };
               }),
@@ -983,6 +951,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
+      // Kits
       createKit: ({ nomeKit, ataId }) => {
         const now = nowIso();
         const kit: Kit = {
@@ -1040,13 +1009,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       updateKitItem: (kitId, kitItemId, patch) => {
         setState((s) => {
           const kitItems = s.kitItems.map((ki) =>
-            ki.id === kitItemId && ki.kitId === kitId
-              ? {
-                  ...ki,
-                  ...patch,
-                  quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade,
-                }
-              : ki,
+            ki.id === kitItemId && ki.kitId === kitId ? { ...ki, ...patch, quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade } : ki,
           );
           const now = nowIso();
           const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
@@ -1076,184 +1039,72 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         });
       },
 
-      createOportunidade: (data) => {
-        const oportunidade: Oportunidade = {
+      // Oportunidades (novo fluxo)
+      createOportunidadeDraft: ({ arpId }) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
+        const now = nowIso();
+        const dataAbertura = todayIso();
+        const draft: Oportunidade = {
           id: uid("opp"),
-          codigo: Math.min(9999, Math.max(1, state.oportunidadeSeq + 1)),
-          clienteId: data.clienteId,
-          arpId: data.arpId,
-          status: data.status ?? "ABERTA",
+          codigo: 0, // será definido ao salvar
+          titulo: "",
+          descricao: "",
+          temperatura: "MORNA",
+          dataAbertura,
+          prazoFechamento: addDaysIso(dataAbertura, 60),
+          clienteId: "",
+          arpId,
+          status: "ABERTA",
           itens: [],
           kits: [],
           kitItens: [],
-          ...data,
-          status: data.status ?? "ABERTA",
+          criadoEm: now,
+          atualizadoEm: now,
         };
-        setState((s) => ({
-          ...s,
-          oportunidades: [oportunidade, ...s.oportunidades],
-          oportunidadeSeq: oportunidade.codigo,
-        }));
-        return oportunidade;
+        return draft;
       },
 
-      updateOportunidade: (id, patch) => {
+      saveOportunidade: ({ draft }) => {
+        requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
+        const now = nowIso();
+        const codigo = Number(draft.codigo) > 0 ? Number(draft.codigo) : nextCodigoDisponivel();
+        const next: Oportunidade = {
+          ...(draft as any),
+          codigo,
+          titulo: String(draft.titulo ?? "").trim(),
+          descricao: String((draft as any).descricao ?? ""),
+          status: ((draft as any).status ?? "ABERTA").toUpperCase(),
+          temperatura: ((draft as any).temperatura ?? "MORNA").toUpperCase(),
+          atualizadoEm: now,
+          criadoEm: (draft as any).criadoEm ?? now,
+          itens: (draft as any).itens ?? [],
+          kits: (draft as any).kits ?? [],
+          kitItens: (draft as any).kitItens ?? [],
+        } as Oportunidade;
+
+        // se estiver GANHAMOS, valida saldo usando a regra existente do sistema
+        if (normalizeOportunidadeStatus(next.status) === "GANHAMOS") {
+          validateSaldoParaOportunidade(next);
+        }
+
         setState((s) => {
-          const atual = s.oportunidades.find((o) => o.id === id);
-          if (!atual) return s;
-          const nextStatus = patch.status ?? atual.status;
-          if (normalizeOportunidadeStatus(nextStatus) === "GANHAMOS") {
-            const projetada: Oportunidade = { ...atual, ...patch, status: nextStatus } as Oportunidade;
-            validateSaldoParaOportunidade(projetada);
-          }
+          const exists = s.oportunidades.some((o) => o.id === next.id);
+          const oportunidades = exists ? s.oportunidades.map((o) => (o.id === next.id ? next : o)) : [next, ...s.oportunidades];
+
           return {
             ...s,
-            oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, ...patch, status: nextStatus } : o)),
+            oportunidades,
+            oportunidadeSeq: Math.max(s.oportunidadeSeq ?? 0, codigo),
           };
         });
-      },
 
-      setOportunidadeItens: (id, itens) => {
-        setState((s) => {
-          const oportunidade = s.oportunidades.find((o) => o.id === id);
-          if (!oportunidade) return s;
-          if (isStatusGanhamos(oportunidade.status)) {
-            validateSaldoParaOportunidade({ ...oportunidade, itens });
-          }
-          return {
-            ...s,
-            oportunidades: s.oportunidades.map((o) => (o.id === id ? { ...o, itens } : o)),
-          };
-        });
-      },
-
-      addOportunidadeKit: (oportunidadeId, data) => {
-        const ok: OportunidadeKit = {
-          id: uid("oppKit"),
-          oportunidadeId,
-          kitId: data.kitId,
-          quantidadeKits: Number(data.quantidadeKits) || 1,
-        };
-        setState((s) => {
-          const oportunidades = s.oportunidades.map((o) => {
-            if (o.id !== oportunidadeId) return o;
-            const nextKits = [...(o.kits ?? []), ok];
-            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
-            const nextOpp = { ...o, kits: nextKits, kitItens };
-            if (isStatusGanhamos(o.status)) {
-              validateSaldoParaOportunidade(nextOpp);
-            }
-            return nextOpp;
-          });
-          return { ...s, oportunidades };
-        });
-        return ok;
-      },
-
-      updateOportunidadeKit: (oportunidadeId, oportunidadeKitId, patch) => {
-        setState((s) => {
-          const oportunidades = s.oportunidades.map((o) => {
-            if (o.id !== oportunidadeId) return o;
-            const nextKits = (o.kits ?? []).map((k) =>
-              k.id === oportunidadeKitId
-                ? {
-                    ...k,
-                    ...patch,
-                    quantidadeKits:
-                      patch.quantidadeKits != null ? Number(patch.quantidadeKits) : k.quantidadeKits,
-                  }
-                : k,
-            );
-            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
-            return { ...o, kits: nextKits, kitItens };
-          });
-          return { ...s, oportunidades };
-        });
-      },
-      deleteOportunidadeKit: (oportunidadeId, oportunidadeKitId) => {
-        setState((s) => {
-          const oportunidades = s.oportunidades.map((o) => {
-            if (o.id !== oportunidadeId) return o;
-            const nextKits = (o.kits ?? []).filter((k) => k.id !== oportunidadeKitId);
-            const kitItens = recalcKitItensForOportunidade(oportunidadeId, nextKits);
-            return { ...o, kits: nextKits, kitItens };
-          });
-          return { ...s, oportunidades };
-        });
+        return next;
       },
 
       deleteOportunidade: (id) => {
         setState((s) => ({
           ...s,
           oportunidades: s.oportunidades.filter((o) => o.id !== id),
-        }));
-      },
-
-      addOportunidadeItem: (oportunidadeId, data) => {
-        const oportunidade = state.oportunidades.find((o) => o.id === oportunidadeId);
-        if (!oportunidade) throw new Error("Oportunidade não encontrada.");
-        const quantidade = Number(data.quantidade) || 0;
-        if (isStatusGanhamos(oportunidade.status)) {
-          assertSaldoDisponivel({
-            oportunidadeId,
-            clienteId: oportunidade.clienteId,
-            arpId: oportunidade.arpId,
-            loteId: data.loteId,
-            arpItemId: data.arpItemId,
-            quantidade,
-          });
-        }
-
-        const oi: OportunidadeItem = { id: uid("oppi"), oportunidadeId, ...data };
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.map((o) =>
-            o.id === oportunidadeId ? { ...o, itens: [...o.itens, oi] } : o,
-          ),
-        }));
-        return oi;
-      },
-
-      updateOportunidadeItem: (oportunidadeId, itemId, patch) => {
-        const oportunidade = state.oportunidades.find((o) => o.id === oportunidadeId);
-        if (!oportunidade) throw new Error("Oportunidade não encontrada.");
-        const atual = oportunidade.itens.find((i) => i.id === itemId);
-        if (!atual) throw new Error("Item não encontrado na oportunidade.");
-
-        const proximoLoteId = patch.loteId ?? atual.loteId;
-        const proximoArpItemId = patch.arpItemId ?? atual.arpItemId;
-        const proximaQuantidade = Number(patch.quantidade ?? atual.quantidade) || 0;
-
-        if (isStatusGanhamos(oportunidade.status)) {
-          assertSaldoDisponivel({
-            oportunidadeId,
-            clienteId: oportunidade.clienteId,
-            arpId: oportunidade.arpId,
-            loteId: proximoLoteId,
-            arpItemId: proximoArpItemId,
-            quantidade: proximaQuantidade,
-            excludeItemId: itemId,
-          });
-        }
-
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.map((o) => {
-            if (o.id !== oportunidadeId) return o;
-            return {
-              ...o,
-              itens: o.itens.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
-            };
-          }),
-        }));
-      },
-
-      deleteOportunidadeItem: (oportunidadeId, itemId) => {
-        setState((s) => ({
-          ...s,
-          oportunidades: s.oportunidades.map((o) =>
-            o.id === oportunidadeId ? { ...o, itens: o.itens.filter((i) => i.id !== itemId) } : o,
-          ),
         }));
       },
     };

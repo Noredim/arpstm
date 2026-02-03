@@ -1,10 +1,6 @@
 export type Esfera = "MUNICIPAL" | "ESTADUAL" | "FEDERAL";
 export type ArpStatus = "VIGENTE" | "ENCERRADA";
-export type TipoFornecimento =
-  | "FORNECIMENTO"
-  | "INSTALACAO"
-  | "MANUTENCAO"
-  | "COMODATO";
+export type TipoFornecimento = "FORNECIMENTO" | "INSTALACAO" | "MANUTENCAO" | "COMODATO";
 export type TipoItemManutencao = "PRODUTO" | "SERVICO";
 export type TipoAdesao = "PARTICIPANTE" | "CARONA";
 
@@ -145,15 +141,25 @@ export type OportunidadeKitItem = {
   quantidadeTotal: number;
 };
 
+export type OportunidadeStatus = "ABERTA" | "GANHAMOS" | "PERDEMOS";
+export type OportunidadeTemperatura = "FRIA" | "MORNA" | "QUENTE";
+
 export type Oportunidade = {
   id: string;
   codigo: number; // sequencial
+  titulo: string;
+  descricao?: string;
+  temperatura: OportunidadeTemperatura;
+  dataAbertura: string; // ISO yyyy-mm-dd
+  prazoFechamento: string; // ISO yyyy-mm-dd
   clienteId: string;
   arpId: string;
-  status?: string; // ex.: GANHAMOS
+  status: OportunidadeStatus;
   itens: OportunidadeItem[];
   kits?: OportunidadeKit[];
   kitItens?: OportunidadeKitItem[];
+  criadoEm?: string; // ISO
+  atualizadoEm?: string; // ISO
 };
 
 export type LogIntegracaoTipo = "IBGE_SYNC";

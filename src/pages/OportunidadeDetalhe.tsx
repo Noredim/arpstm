@@ -1,149 +1,302 @@
 import * as React from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/app/AppLayout";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { useArpStore } from "@/store/arp-store";
-import { ArrowLeft, ExternalLink, FileText, Layers, Plus, Save, User } from "lucide-react";
-import type { OportunidadeItem } from "@/lib/arp-types";
-import { uid } from "@/lib/arp-utils";
+import { ArrowLeft, Save, XCircle } from "lucide-react";
+import { OportunidadeHeaderForm, type OportunidadeHeaderDraft } from "@/components/oportunidades/OportunidadeHeaderForm";
+import { NovoClienteDialog } from "@/components/oportunidades/NovoClienteDialog";
+import { OportunidadeItensGrid, type GridRow } from "@/components/oportunidades/OportunidadeItensGrid";
+import { AddKitSection } from "@/components/oportunidades/AddKitSection";
+import { OportunidadeTotais, type OportunidadeLinhaCalc } from "@/components/oportunidades/OportunidadeTotais";
+import type { Oportunidade, OportunidadeItem } from "@/lib/arp-types";
+import { round2, uid } from "@/lib/arp-utils";
+
+function hasDiff(a: any, b: any) {
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
 
 export default function OportunidadeDetalhePage() {
-  const params = useParams();
-  const id = params.id; // pode ser undefined em /oportunidades/nova
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { state, createOportunidade, updateOportunidade, setOportunidadeItens } = useArpStore();
+  const [searchParams] = useSearchParams();
+  const params = useParams();
+  const { state, createOportunidadeDraft, saveOportunidade } = useArpStore();
 
+  const id = params.id;
   const isNova = !id || id === "nova";
+
   const arpIdFromQuery = searchParams.get("arpId") ?? "";
 
-  const oportunidade = React.useMemo(() => {
+  const existing = React.useMemo(() => {
     if (isNova) return undefined;
     return state.oportunidades.find((o) => o.id === id);
   }, [id, isNova, state.oportunidades]);
 
-  const arp = React.useMemo(() => {
-    const arpId = isNova ? arpIdFromQuery : oportunidade?.arpId;
-    if (!arpId) return undefined;
-    return state.arps.find((a) => a.id === arpId);
-  }, [arpIdFromQuery, isNova, oportunidade?.arpId, state.arps]);
+  const arpId = isNova ? arpIdFromQuery : existing?.arpId ?? "";
 
+  const arp = React.useMemo(() => state.arps.find((a) => a.id === arpId), [arpId, state.arps]);
+  const clientes = state.clientes;
   const cliente = React.useMemo(() => {
-    if (isNova) return undefined;
-    if (!oportunidade) return undefined;
-    return state.clientes.find((c) => c.id === oportunidade.clienteId);
-  }, [isNova, oportunidade, state.clientes]);
+    const clienteId = isNova ? "" : existing?.clienteId;
+    if (!clienteId) return undefined;
+    return state.clientes.find((c) => c.id === clienteId);
+  }, [existing?.clienteId, isNova, state.clientes]);
 
-  const itensCount = (oportunidade?.itens?.length ?? 0) + (oportunidade?.kitItens?.length ?? 0);
+  // draft state (local)
+  const [draft, setDraft] = React.useState<OportunidadeHeaderDraft | null>(null);
+  const [rows, setRows] = React.useState<GridRow[]>([]);
+  const [savedSnapshot, setSavedSnapshot] = React.useState<{ draft: any; rows: any } | null>(null);
 
-  function handleCreateQuick() {
+  // novo cliente modal
+  const [openNovoCliente, setOpenNovoCliente] = React.useState(false);
+
+  React.useEffect(() => {
+    // inicializa draft
+    if (!arpId) return;
+
+    if (!isNova && existing) {
+      setDraft({
+        id: existing.id,
+        codigo: existing.codigo,
+        arpId: existing.arpId,
+        titulo: existing.titulo ?? "",
+        clienteId: existing.clienteId ?? "",
+        status: existing.status ?? "ABERTA",
+        descricao: existing.descricao ?? "",
+        temperatura: existing.temperatura ?? "MORNA",
+        dataAbertura: existing.dataAbertura ?? "",
+        prazoFechamento: existing.prazoFechamento ?? "",
+      });
+
+      setRows(
+        (existing.itens ?? []).map((i) => ({
+          id: i.id,
+          loteId: i.loteId,
+          arpItemId: i.arpItemId,
+          quantidade: Number(i.quantidade) || 1,
+        })),
+      );
+
+      const snap = {
+        draft: {
+          id: existing.id,
+          codigo: existing.codigo,
+          arpId: existing.arpId,
+          titulo: existing.titulo ?? "",
+          clienteId: existing.clienteId ?? "",
+          status: existing.status ?? "ABERTA",
+          descricao: existing.descricao ?? "",
+          temperatura: existing.temperatura ?? "MORNA",
+          dataAbertura: existing.dataAbertura ?? "",
+          prazoFechamento: existing.prazoFechamento ?? "",
+        },
+        rows: (existing.itens ?? []).map((i) => ({
+          id: i.id,
+          loteId: i.loteId,
+          arpItemId: i.arpItemId,
+          quantidade: Number(i.quantidade) || 1,
+        })),
+      };
+      setSavedSnapshot(snap);
+    }
+
+    if (isNova) {
+      const d = createOportunidadeDraft({ arpId });
+      setDraft({
+        id: d.id,
+        codigo: undefined,
+        arpId: d.arpId,
+        titulo: "",
+        clienteId: "",
+        status: d.status ?? "ABERTA",
+        descricao: d.descricao ?? "",
+        temperatura: d.temperatura ?? "MORNA",
+        dataAbertura: d.dataAbertura,
+        prazoFechamento: d.prazoFechamento,
+      });
+      setRows([]);
+      setSavedSnapshot({ draft: null, rows: [] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arpId, isNova, existing?.id]);
+
+  const currentCliente = React.useMemo(() => {
+    if (!draft?.clienteId) return undefined;
+    return state.clientes.find((c) => c.id === draft.clienteId);
+  }, [draft?.clienteId, state.clientes]);
+
+  const missingAta = !arpId;
+
+  const dirty = React.useMemo(() => {
+    if (!draft) return false;
+    return hasDiff({ draft, rows }, savedSnapshot);
+  }, [draft, rows, savedSnapshot]);
+
+  const linhasCalc: OportunidadeLinhaCalc[] = React.useMemo(() => {
+    if (!arp) return [];
+    const lotesById = Object.fromEntries(arp.lotes.map((l) => [l.id, l]));
+    const itensById: Record<string, any> = {};
+    for (const l of arp.lotes) for (const it of l.itens) itensById[it.id] = it;
+
+    return rows
+      .map((r) => {
+        const lote = lotesById[r.loteId];
+        const item = itensById[r.arpItemId];
+        if (!lote || !item) return null;
+
+        const qtd = Number(r.quantidade) || 0;
+        const unit =
+          lote.tipoFornecimento === "MANUTENCAO"
+            ? Number(item.valorUnitarioMensal || 0)
+            : Number(item.valorUnitario || 0);
+
+        const total = round2(qtd * unit);
+        const anual =
+          lote.tipoFornecimento === "COMODATO" || lote.tipoFornecimento === "MANUTENCAO"
+            ? round2(total * 12)
+            : undefined;
+
+        return {
+          id: r.id,
+          loteId: r.loteId,
+          tipoFornecimento: lote.tipoFornecimento,
+          valorTotalLinha: total,
+          valorTotalLinhaAnual: anual,
+        } as OportunidadeLinhaCalc;
+      })
+      .filter(Boolean) as OportunidadeLinhaCalc[];
+  }, [arp, rows]);
+
+  function validateAll() {
+    if (!draft) return { ok: false, message: "Draft não carregado." };
+    if (!draft.arpId) return { ok: false, message: "ATA é obrigatória." };
+    if (!draft.titulo.trim()) return { ok: false, message: "Título é obrigatório." };
+    if (!draft.clienteId) return { ok: false, message: "Cliente é obrigatório." };
+    if (!draft.status) return { ok: false, message: "Status é obrigatório." };
+    if (!draft.dataAbertura) return { ok: false, message: "Data de abertura é obrigatória." };
+    if (!draft.prazoFechamento) return { ok: false, message: "Prazo para fechamento é obrigatório." };
+
+    if (rows.length === 0) return { ok: false, message: "Adicione ao menos 1 item (avulso ou via kit)." };
+    const anyError = rows.some((r) => Boolean(r.error));
+    if (anyError) return { ok: false, message: "Existem erros na grid de itens. Corrija antes de salvar." };
+
+    return { ok: true as const };
+  }
+
+  function onCancel() {
+    if (dirty) {
+      const ok = confirm("Existem alterações não salvas. Deseja sair mesmo assim?");
+      if (!ok) return;
+    }
+    navigate("/oportunidades");
+  }
+
+  function onSave() {
+    const v = validateAll();
+    if (!v.ok) {
+      toast({ title: "Validação", description: (v as any).message, variant: "destructive" });
+      return;
+    }
+    if (!draft) return;
+
+    const itens: OportunidadeItem[] = rows.map((r) => ({
+      id: r.id || uid("oppi"),
+      oportunidadeId: draft.id,
+      loteId: r.loteId,
+      arpItemId: r.arpItemId,
+      quantidade: Number(r.quantidade) || 1,
+    }));
+
+    const opp: Omit<Oportunidade, "codigo"> & { codigo?: number } = {
+      id: draft.id,
+      codigo: draft.codigo,
+      arpId: draft.arpId,
+      titulo: draft.titulo.trim(),
+      descricao: draft.descricao?.trim() || "",
+      temperatura: draft.temperatura,
+      dataAbertura: draft.dataAbertura,
+      prazoFechamento: draft.prazoFechamento,
+      clienteId: draft.clienteId,
+      status: draft.status,
+      itens,
+      kits: [],
+      kitItens: [],
+    };
+
+    const saved = saveOportunidade({ draft: opp as any });
+    toast({ title: "Oportunidade salva", description: `Código #${saved.codigo}` });
+
+    setSavedSnapshot({ draft, rows });
+    navigate("/oportunidades");
+  }
+
+  function injectKit(items: Array<{ loteId: string; arpItemId: string; quantidade: number }>, kitNome: string) {
     if (!arp) {
+      toast({ title: "ATA inválida", variant: "destructive" });
+      return;
+    }
+
+    // valida se itens existem na ATA
+    const lotesById = Object.fromEntries(arp.lotes.map((l) => [l.id, l]));
+    const notFound: string[] = [];
+
+    for (const it of items) {
+      const lote = lotesById[it.loteId];
+      const ok = lote?.itens?.some((x) => x.id === it.arpItemId);
+      if (!ok) notFound.push(`${it.loteId} / ${it.arpItemId}`);
+    }
+
+    if (notFound.length) {
       toast({
-        title: "Selecione uma ATA válida",
-        description: "Abra 'Nova oportunidade' a partir de uma ATA vigente.",
+        title: "Kit incompatível com a ATA",
+        description: `Itens não encontrados na ATA: ${notFound.slice(0, 5).join(", ")}${notFound.length > 5 ? "…" : ""}`,
         variant: "destructive",
       });
       return;
     }
-    if (state.clientes.length === 0) {
-      toast({ title: "Cadastre um cliente primeiro", variant: "destructive" });
-      return;
-    }
 
-    const created = createOportunidade({
-      arpId: arp.id,
-      clienteId: state.clientes[0].id,
-      status: "ABERTA",
-    });
+    // A2: mescla por loteId+arpItemId somando quantidade
+    const byKey = new Map<string, GridRow>();
+    for (const r of rows) byKey.set(`${r.loteId}:${r.arpItemId}`, r);
 
-    // cria um item vazio só para o detalhe não ficar "morto"
-    const firstLote = arp.lotes[0];
-    const firstItem = firstLote?.itens[0];
-    if (firstLote && firstItem) {
-      const itens: OportunidadeItem[] = [
-        {
+    const next = [...rows];
+
+    for (const it of items) {
+      const key = `${it.loteId}:${it.arpItemId}`;
+      const existingRow = byKey.get(key);
+      if (existingRow) {
+        const idx = next.findIndex((r) => r.id === existingRow.id);
+        if (idx >= 0) {
+          next[idx] = {
+            ...next[idx],
+            quantidade: Math.max(1, Number(next[idx].quantidade || 0) + (Number(it.quantidade) || 0)),
+          };
+        }
+      } else {
+        next.push({
           id: uid("oppi"),
-          oportunidadeId: created.id,
-          loteId: firstLote.id,
-          arpItemId: firstItem.id,
-          quantidade: 1,
-        },
-      ];
-      setOportunidadeItens(created.id, itens);
+          loteId: it.loteId,
+          arpItemId: it.arpItemId,
+          quantidade: Math.max(1, Number(it.quantidade) || 1),
+        });
+      }
     }
 
-    toast({ title: "Oportunidade criada", description: `Código ${created.codigo}` });
-    navigate(`/oportunidades/${created.id}`);
+    setRows(next);
+    toast({ title: "Kit adicionado", description: kitNome });
   }
 
-  function handleSaveStatusGanhamos() {
-    if (!oportunidade) return;
-    updateOportunidade(oportunidade.id, { status: "GANHAMOS" });
-    toast({ title: "Status atualizado", description: "GANHAMOS" });
-  }
-
-  if (isNova) {
+  if (missingAta) {
     return (
       <AppLayout>
         <Card className="rounded-3xl border p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" className="rounded-2xl" onClick={() => navigate("/oportunidades")}>
-                  <ArrowLeft className="mr-2 size-4" />
-                  Oportunidades
-                </Button>
-                <div className="text-lg font-semibold tracking-tight">Nova oportunidade</div>
-                {arp ? (
-                  <Badge variant="secondary" className="rounded-full">
-                    {arp.nomeAta}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="rounded-full">
-                    ATA não selecionada
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Esta é uma criação rápida (mínima) para você não cair em “Oportunidade não encontrada”.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button className="rounded-2xl" onClick={handleCreateQuick} disabled={!arpIdFromQuery}>
-                <Plus className="mr-2 size-4" />
-                Criar agora
-              </Button>
-            </div>
-          </div>
-
-          {!arpIdFromQuery && (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              Falta o parâmetro <span className="font-mono">arpId</span> na URL. Volte para “Oportunidades” e clique em
-              “Nova oportunidade” novamente.
-            </div>
-          )}
-
-          {arp && arp.lotes.length === 0 && (
-            <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              Esta ATA ainda não tem lotes/itens; você ainda pode criar a oportunidade, mas ela ficará sem itens.
-            </div>
-          )}
-        </Card>
-      </AppLayout>
-    );
-  }
-
-  if (!oportunidade) {
-    return (
-      <AppLayout>
-        <Card className="rounded-3xl border p-6">
-          <div className="text-lg font-semibold tracking-tight">Oportunidade não encontrada</div>
-          <p className="mt-1 text-sm text-muted-foreground">Talvez ela tenha sido removida.</p>
+          <div className="text-lg font-semibold tracking-tight">Selecione uma ATA para continuar</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A criação de oportunidade exige que você selecione uma ATA no passo anterior.
+          </p>
           <div className="mt-4">
             <Button variant="secondary" className="rounded-2xl" onClick={() => navigate("/oportunidades")}>
               <ArrowLeft className="mr-2 size-4" />
@@ -155,146 +308,78 @@ export default function OportunidadeDetalhePage() {
     );
   }
 
+  if (!draft) return null;
+
+  const allowedKitIds = new Set(state.kits.filter((k) => k.ataId === arpId).map((k) => k.id));
+
   return (
     <AppLayout>
       <div className="grid gap-4">
-        <Card className="rounded-3xl border p-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" className="rounded-2xl" onClick={() => navigate("/oportunidades")}>
-                  <ArrowLeft className="mr-2 size-4" />
-                  Oportunidades
-                </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Button variant="secondary" className="rounded-2xl w-fit" onClick={() => navigate("/oportunidades")}>
+            <ArrowLeft className="mr-2 size-4" />
+            Oportunidades
+          </Button>
 
-                <div className="text-lg font-semibold tracking-tight">Oportunidade #{oportunidade.codigo}</div>
-
-                <Badge
-                  className={
-                    (oportunidade.status ?? "ABERTA").toUpperCase() === "GANHAMOS"
-                      ? "rounded-full bg-emerald-600 text-white"
-                      : "rounded-full bg-indigo-600 text-white"
-                  }
-                >
-                  {(oportunidade.status ?? "ABERTA").toUpperCase()}
-                </Badge>
-              </div>
-
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <User className="size-4" />
-                    Cliente
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">{cliente?.nome ?? "—"}</div>
-                </div>
-
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <FileText className="size-4" />
-                    ATA de origem
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">{arp?.nomeAta ?? "—"}</div>
-                </div>
-              </div>
-
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <div className="text-xs text-muted-foreground">Itens (avulsos + kits)</div>
-                  <div className="mt-1 text-xl font-semibold tabular-nums">{itensCount}</div>
-                </div>
-
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <div className="text-xs text-muted-foreground">Kits</div>
-                  <div className="mt-1 text-xl font-semibold tabular-nums">{oportunidade.kits?.length ?? 0}</div>
-                </div>
-
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <div className="text-xs text-muted-foreground">ID</div>
-                  <div className="mt-1 font-mono text-xs text-muted-foreground">{oportunidade.id}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="secondary" className="rounded-2xl" onClick={handleSaveStatusGanhamos}>
-                <Save className="mr-2 size-4" />
-                Marcar como GANHAMOS
-              </Button>
-              <Button asChild className="rounded-2xl">
-                <Link to={`/oportunidades/nova?arpId=${encodeURIComponent(oportunidade.arpId)}`}>
-                  Nova a partir desta ATA
-                  <ExternalLink className="ml-2 size-4" />
-                </Link>
-              </Button>
-            </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="secondary" className="rounded-2xl" onClick={onCancel}>
+              <XCircle className="mr-2 size-4" />
+              Cancelar
+            </Button>
+            <Button className="rounded-2xl" onClick={onSave}>
+              <Save className="mr-2 size-4" />
+              Salvar
+            </Button>
           </div>
+        </div>
 
-          <Separator className="my-5" />
+        <OportunidadeHeaderForm
+          draft={draft}
+          arps={state.arps}
+          clientes={state.clientes}
+          onChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
+          onNewCliente={() => setOpenNovoCliente(true)}
+        />
 
-          <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-            <Card className="rounded-3xl border p-4">
-              <div className="flex items-center gap-2">
-                <div className="grid size-10 place-items-center rounded-2xl bg-secondary">
-                  <Layers className="size-5" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold tracking-tight">Itens da oportunidade</div>
-                  <div className="text-sm text-muted-foreground">Mostrando itens avulsos e itens vindos de kits.</div>
-                </div>
-              </div>
+        <AddKitSection
+          kits={state.kits}
+          kitItems={state.kitItems}
+          allowedKitIds={allowedKitIds}
+          onAddKitItems={injectKit}
+        />
 
-              <div className="mt-4 space-y-3">
-                {(oportunidade.itens ?? []).length === 0 && (oportunidade.kitItens ?? []).length === 0 ? (
-                  <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    Nenhum item vinculado.
-                  </div>
-                ) : (
-                  <>
-                    {(oportunidade.itens ?? []).map((i) => (
-                      <div key={i.id} className="rounded-2xl border bg-background px-4 py-3">
-                        <div className="text-xs text-muted-foreground">Avulso</div>
-                        <div className="mt-1 text-sm font-medium">
-                          Lote: {i.loteId} • Item: {i.arpItemId}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">Qtd: {i.quantidade}</div>
-                      </div>
-                    ))}
+        <OportunidadeItensGrid
+          oportunidadeId={draft.id}
+          arp={arp}
+          cliente={currentCliente}
+          rows={rows}
+          onRows={setRows}
+          oportunidadesAll={state.oportunidades}
+        />
 
-                    {(oportunidade.kitItens ?? []).map((i) => (
-                      <div key={i.id} className="rounded-2xl border bg-muted/10 px-4 py-3">
-                        <div className="text-xs text-muted-foreground">De kit</div>
-                        <div className="mt-1 text-sm font-medium">
-                          Lote: {i.loteId} • Item: {i.arpItemId}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">Qtd total: {i.quantidadeTotal}</div>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            </Card>
+        <OportunidadeTotais arp={arp} linhas={linhasCalc} />
 
-            <Card className="rounded-3xl border p-4">
-              <div className="text-sm font-semibold tracking-tight">Resumo financeiro</div>
-              <div className="mt-1 text-sm text-muted-foreground">(Estimativa simples baseada nos itens atuais da ATA.)</div>
+        <Separator />
 
-              <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
-                <div className="text-xs text-muted-foreground">Total estimado</div>
-                <div className="mt-1 text-2xl font-semibold tabular-nums">{moneyBRL(0)}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Atualizado em: {dateTimeBR((oportunidade as any).atualizadoEm)}
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs text-indigo-800">
-                Dica: se você quiser, eu posso calcular o total real usando os valores unitários dos itens da ATA
-                (incluindo recorrência de manutenção/comodato).
-              </div>
-            </Card>
-          </div>
-        </Card>
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button variant="secondary" className="rounded-2xl" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button className="rounded-2xl" onClick={onSave}>
+            <Save className="mr-2 size-4" />
+            Salvar oportunidade
+          </Button>
+        </div>
       </div>
+
+      <NovoClienteDialog
+        open={openNovoCliente}
+        onOpenChange={setOpenNovoCliente}
+        onCreated={(c) => {
+          setOpenNovoCliente(false);
+          setDraft((d) => (d ? { ...d, clienteId: c.id } : d));
+        }}
+      />
     </AppLayout>
   );
 }
