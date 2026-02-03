@@ -38,11 +38,11 @@ const App = () => (
             <Route path="/kits" element={<Kits />} />
             <Route path="/kits/:id" element={<KitDetalhe />} />
             <Route path="/oportunidades" element={<Oportunidades />} />
+            <Route path="/oportunidades/nova" element={<OportunidadeDetalhe />} />
             <Route path="/oportunidades/:id" element={<OportunidadeDetalhe />} />
             <Route path="/controle-saldo" element={<ControleSaldo />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-
           </Routes>
         </BrowserRouter>
       </ArpStoreProvider>
