@@ -15,6 +15,7 @@ import Cidades from "./pages/Cidades";
 import Usuarios from "./pages/Usuarios";
 import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
+import ControleSaldo from "./pages/ControleSaldo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,8 +39,10 @@ const App = () => (
             <Route path="/kits/:id" element={<KitDetalhe />} />
             <Route path="/oportunidades" element={<Oportunidades />} />
             <Route path="/oportunidades/:id" element={<OportunidadeDetalhe />} />
+            <Route path="/controle-saldo" element={<ControleSaldo />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
+
           </Routes>
         </BrowserRouter>
       </ArpStoreProvider>

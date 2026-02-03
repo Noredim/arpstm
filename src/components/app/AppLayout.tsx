@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, FileText, Handshake, Home, Map, MapPin, Shield, Sparkles } from "lucide-react";
+import { Boxes, Building2, Factory, FileText, Handshake, Home, Map, MapPin, Shield, Sparkles } from "lucide-react";
+
 import { useArpStore } from "@/store/arp-store";
 
 const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
@@ -33,6 +34,7 @@ const navComercial = [
   { to: "/atas", label: "Atas (ARP)", icon: FileText },
   { to: "/kits", label: "Kits", icon: Boxes },
   { to: "/oportunidades", label: "Oportunidades", icon: Handshake },
+  { to: "/controle-saldo", label: "Controle de Saldo", icon: Factory },
 ] as const;
 
 const navUsuario = [{ to: "/usuarios", label: "Usuários", icon: Shield }] as const;
