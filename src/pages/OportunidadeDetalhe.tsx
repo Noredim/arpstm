@@ -1,430 +1,135 @@
-import * as React from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { AppLayout } from "@/components/app/AppLayout";
-import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { useParams, useNavigate } from "react-router-dom";
 import { useArpStore } from "@/store/arp-store";
-import { Oportunidade, Cliente } from "@/lib/arp-types";
-import { 
-  ArrowLeft, 
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
-  Plus, 
-  Save, 
-  Trash2, 
-  UserPlus, 
-  AlertCircle,
-  CalendarIcon 
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Building2, FileText, Calendar, User, MapPin } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { toast } from "sonner";
 
-export default function OportunidadeDetalhe() {
-  const { id } = useParams<{ id: string }>();
+const OportunidadeDetalhe = () => {
+  const { id } = useParams();
   const navigate = useNavigate();
-  const { 
-    oportunidades, 
-    clientes, 
-    updateOportunidade, 
-    addOportunidade, 
-    deleteOportunidade 
-  } = useArpStore();
+  const { oportunidades, clientes, atas, cidades } = useArpStore();
 
-  const isNew = id === "nova";
-  const [loading, setLoading] = React.useState(!isNew);
-  const [editing, setEditing] = React.useState(isNew);
-  const [formData, setFormData] = React.useState<Partial<Oportunidade>>({
-    titulo: "",
-    status: "PROSPECCAO",
-    valorEstimado: 0,
-    descricao: "",
-    dataFechamento: new Date().toISOString(),
-  });
+  // Busca a oportunidade com segurança
+  const oportunidade = oportunidades.find((o) => o.id === id);
 
-  React.useEffect(() => {
-    if (!isNew && id) {
-      const oportunidade = oportunidades.find((o) => o.id === id);
-      if (oportunidade) {
-        setFormData(oportunidade);
-      } else {
-        toast.error("Oportunidade não encontrada");
-        navigate("/oportunidades");
-      }
-      setLoading(false);
-    }
-  }, [id, isNew, oportunidades, navigate]);
-
-  const handleSave = () => {
-    if (!formData.titulo || !formData.clienteId) {
-      toast.error("Por favor, preencha o título e selecione um cliente.");
-      return;
-    }
-
-    try {
-      if (isNew) {
-        const newOportunidade: Oportunidade = {
-          ...formData as Oportunidade,
-          id: crypto.randomUUID(),
-          dataCriacao: new Date().toISOString(),
-          historico: [
-            {
-              id: crypto.randomUUID(),
-              data: new Date().toISOString(),
-              descricao: "Oportunidade criada",
-              status: formData.status || "PROSPECCAO",
-            },
-          ],
-        };
-        addOportunidade(newOportunidade);
-        toast.success("Oportunidade criada com sucesso!");
-        navigate(`/oportunidades/${newOportunidade.id}`);
-      } else {
-        updateOportunidade(id!, formData);
-        toast.success("Oportunidade atualizada com sucesso!");
-        setEditing(false);
-      }
-    } catch (error) {
-      toast.error("Erro ao salvar oportunidade");
-    }
-  };
-
-  const handleDelete = () => {
-    if (window.confirm("Tem certeza que deseja excluir esta oportunidade?")) {
-      deleteOportunidade(id!);
-      toast.success("Oportunidade excluída com sucesso");
-      navigate("/oportunidades");
-    }
-  };
-
-  const getStatusBadge = (status: Oportunidade["status"]) => {
-    const variants: Record<Oportunidade["status"], string> = {
-      PROSPECCAO: "bg-blue-100 text-blue-800",
-      QUALIFICACAO: "bg-yellow-100 text-yellow-800",
-      PROPOSTA: "bg-purple-100 text-purple-800",
-      NEGOCIACAO: "bg-orange-100 text-orange-800",
-      FECHADO: "bg-green-100 text-green-800",
-      PERDIDO: "bg-red-100 text-red-800",
-    };
-    return variants[status] || "bg-gray-100 text-gray-800";
-  };
-
-  if (loading) {
+  // Se não encontrar, exibe estado de erro amigável em vez de quebrar
+  if (!oportunidade) {
     return (
-      <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <p>Carregando...</p>
-        </div>
-      </AppLayout>
+      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+        <h2 className="text-2xl font-bold text-destructive">Oportunidade não encontrada</h2>
+        <p className="text-muted-foreground">O registro solicitado pode ter sido removido ou o ID é inválido.</p>
+        <Button onClick={() => navigate("/oportunidades")}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para lista
+        </Button>
+      </div>
     );
   }
 
-  const clienteAtual = clientes.find(c => c.id === formData.clienteId);
+  // Busca dados relacionados com Optional Chaining para segurança total
+  const cliente = clientes.find((c) => c.id === oportunidade.clienteId);
+  const ata = atas.find((a) => a.id === oportunidade.ataId);
+  const cidade = cidades.find((cid) => cid.id === cliente?.cidadeId);
 
   return (
-    <AppLayout>
-      <div className="flex flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={() => navigate("/oportunidades")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                {isNew ? "Nova Oportunidade" : formData.titulo}
-              </h1>
-              {!isNew && (
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="secondary" className={getStatusBadge(formData.status as any)}>
-                    {formData.status}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Criado em {format(new Date(formData.dataCriacao!), "dd/MM/yyyy", { locale: ptBR })}
-                  </span>
+    <div className="container mx-auto py-6 space-y-6 animate-in fade-in duration-500">
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={() => navigate("/oportunidades")}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+        </Button>
+        <Badge variant={oportunidade.status === "Ganha" ? "default" : "secondary"} className="text-sm px-4 py-1">
+          {oportunidade.status}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Coluna Principal: Detalhes da Oportunidade */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <FileText className="h-6 w-6 text-primary" />
+              {oportunidade.titulo}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="space-y-1">
+                <span className="text-muted-foreground font-medium">Data de Criação</span>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 opacity-70" />
+                  {format(new Date(oportunidade.dataCriacao), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                 </div>
-              )}
+              </div>
+              <div className="space-y-1">
+                <span className="text-muted-foreground font-medium">Valor Estimado</span>
+                <div className="text-lg font-bold text-primary">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(oportunidade.valor)}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {!isNew && (
-              <Button variant="destructive" variant="outline" onClick={handleDelete}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Excluir
-              </Button>
-            )}
-            {editing ? (
-              <>
-                {!isNew && (
-                  <Button variant="outline" onClick={() => setEditing(false)}>
-                    Cancelar
-                  </Button>
-                )}
-                <Button onClick={handleSave}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Salvar
+
+            <Separator />
+
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg">Descrição</h3>
+              <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                {oportunidade.descricao || "Nenhuma descrição detalhada fornecida."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Coluna Lateral: Dados do Cliente e Ata */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Cliente Final</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Building2 className="h-5 w-5 mt-0.5 text-primary" />
+                <div>
+                  <p className="font-medium">{cliente?.nome || "Cliente não vinculado"}</p>
+                  <p className="text-xs text-muted-foreground">{cliente?.documento || "Sem documento"}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <MapPin className="h-5 w-5 text-primary" />
+                <p className="text-sm">{cidade?.nome ? `${cidade.nome} - ${cidade.uf}` : "Localização não definida"}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <User className="h-5 w-5 text-primary" />
+                <p className="text-sm">{cliente?.contato || "Sem contato principal"}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Ata de Registro de Preços</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="p-3 bg-muted rounded-md border border-dashed border-primary/30">
+                <p className="text-sm font-bold uppercase">{ata?.numero || "Ata não vinculada"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Órgão: {ata?.orgao || "Não informado"}</p>
+                <Button 
+                  variant="link" 
+                  className="p-0 h-auto text-xs mt-2" 
+                  onClick={() => ata && navigate(`/atas/${ata.id}`)}
+                  disabled={!ata}
+                >
+                  Ver detalhes da Ata
                 </Button>
-              </>
-            ) : (
-              <Button onClick={() => setEditing(true)}>Editar Oportunidade</Button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 flex flex-col gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Informações Gerais</CardTitle>
-                <CardDescription>Detalhes básicos da oportunidade de negócio</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="titulo">Título da Oportunidade</Label>
-                    <Input
-                      id="titulo"
-                      value={formData.titulo}
-                      onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-                      disabled={!editing}
-                      placeholder="Ex: Aquisição de licenças ARP"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cliente">Cliente</Label>
-                    <div className="flex gap-2">
-                      <Select
-                        value={formData.clienteId}
-                        onValueChange={(value) => setFormData({ ...formData, clienteId: value })}
-                        disabled={!editing}
-                      >
-                        <SelectTrigger id="cliente" className="w-full">
-                          <SelectValue placeholder="Selecione um cliente" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clientes.map((cliente) => (
-                            <SelectItem key={cliente.id} value={cliente.id}>
-                              {cliente.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {editing && (
-                        <ClienteFormDialog
-                          trigger={
-                            <Button variant="outline" size="icon" type="button">
-                              <UserPlus className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-                      disabled={!editing}
-                    >
-                      <SelectTrigger id="status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PROSPECCAO">Prospecção</SelectItem>
-                        <SelectItem value="QUALIFICACAO">Qualificação</SelectItem>
-                        <SelectItem value="PROPOSTA">Proposta</SelectItem>
-                        <SelectItem value="NEGOCIACAO">Negociação</SelectItem>
-                        <SelectItem value="FECHADO">Fechado (Ganho)</SelectItem>
-                        <SelectItem value="PERDIDO">Perdido</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="valor">Valor Estimado (R$)</Label>
-                    <Input
-                      id="valor"
-                      type="number"
-                      value={formData.valorEstimado}
-                      onChange={(e) => setFormData({ ...formData, valorEstimado: Number(e.target.value) })}
-                      disabled={!editing}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Previsão de Fechamento</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !formData.dataFechamento && "text-muted-foreground"
-                          )}
-                          disabled={!editing}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.dataFechamento ? (
-                            format(new Date(formData.dataFechamento), "PPP", { locale: ptBR })
-                          ) : (
-                            <span>Selecione uma data</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarComponent
-                          mode="single"
-                          selected={formData.dataFechamento ? new Date(formData.dataFechamento) : undefined}
-                          onSelect={(date) => 
-                            setFormData({ ...formData, dataFechamento: date?.toISOString() })
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="descricao">Descrição / Observações</Label>
-                  <Textarea
-                    id="descricao"
-                    rows={5}
-                    value={formData.descricao}
-                    onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                    disabled={!editing}
-                    placeholder="Detalhes sobre a negociação, necessidades do cliente, etc."
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {!isNew && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Histórico de Atividades</CardTitle>
-                  <CardDescription>Registro de mudanças e interações</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
-                    {formData.historico?.map((item, index) => (
-                      <div key={item.id} className="relative flex items-start gap-4 ml-2">
-                        <div className="absolute left-0 mt-1.5 h-6 w-6 rounded-full border-4 border-white bg-slate-400 flex items-center justify-center">
-                          {item.status === "FECHADO" ? (
-                            <CheckCircle2 className="h-3 w-3 text-white" />
-                          ) : (
-                            <div className="h-1.5 w-1.5 rounded-full bg-white" />
-                          )}
-                        </div>
-                        <div className="flex flex-col ml-8">
-                          <span className="text-sm font-medium">{item.descricao}</span>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(item.data), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </span>
-                            <Badge variant="outline" className="text-[10px] py-0 h-4">
-                              {item.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {editing && (
-                    <div className="mt-6 pt-6 border-t">
-                      <Button variant="outline" size="sm" className="w-full">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Adicionar Anotação
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Contato do Cliente</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {clienteAtual ? (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Nome / Razão Social</p>
-                      <p className="text-sm">{clienteAtual.nome}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Responsável</p>
-                      <p className="text-sm">{clienteAtual.responsavel || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">E-mail</p>
-                      <p className="text-sm">{clienteAtual.email || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Telefone</p>
-                      <p className="text-sm">{clienteAtual.telefone || "Não informado"}</p>
-                    </div>
-                    <Button 
-                      variant="link" 
-                      className="p-0 h-auto text-xs"
-                      onClick={() => navigate(`/clientes/${clienteAtual.id}`)}
-                    >
-                      Ver perfil completo do cliente
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-4 text-center">
-                    <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhum cliente selecionado</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {!isNew && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Resumo de Valores</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Valor da Oportunidade:</span>
-                    <span className="font-bold text-lg">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.valorEstimado || 0)}
-                    </span>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-2">
-                    <p><strong>Probabilidade:</strong> Calculada baseada no status atual.</p>
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-primary h-full transition-all duration-500" 
-                        style={{ 
-                          width: formData.status === 'PROSPECCAO' ? '10%' : 
-                                 formData.status === 'QUALIFICACAO' ? '30%' :
-                                 formData.status === 'PROPOSTA' ? '60%' :
-                                 formData.status === 'NEGOCIACAO' ? '80%' :
-                                 formData.status === 'FECHADO' ? '100%' : '0%'
-                        }} 
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
-    </AppLayout>
+    </div>
   );
-}
+};
+
+export default OportunidadeDetalhe;
