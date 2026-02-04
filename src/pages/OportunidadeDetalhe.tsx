@@ -23,7 +23,7 @@ export default function OportunidadeDetalhePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
-  const { state, createOportunidadeDraft, saveOportunidade } = useArpStore();
+  const { state, createOportunidadeDraft, saveOportunidade, createKit } = useArpStore();
 
   const id = params.id;
   const isNova = !id || id === "nova";
@@ -286,7 +286,7 @@ export default function OportunidadeDetalhePage() {
     }
 
     setRows(next);
-    toast({ title: "Kit adicionado", description: kitNome });
+    toast({ title: "Kit lançado", description: kitNome });
   }
 
   if (missingAta) {
@@ -363,6 +363,17 @@ export default function OportunidadeDetalhePage() {
           allowedKitIds={allowedKitIds}
           onAddKitItems={injectKit}
           disabled={isLocked}
+          onEditKits={() => navigate("/kits")}
+          onNewKit={() => {
+            if (isLocked) return;
+            if (!arpId) {
+              toast({ title: "Selecione uma ATA", variant: "destructive" });
+              return;
+            }
+            const kit = createKit({ nomeKit: "Novo Kit", ataId: arpId });
+            toast({ title: "Kit criado", description: "Abra o detalhe para editar os itens." });
+            navigate(`/kits/${kit.id}`);
+          }}
         />
 
         <OportunidadeItensGrid
