@@ -589,127 +589,139 @@ function LoteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl rounded-3xl">
-        <DialogHeader>
-          <DialogTitle className="text-base tracking-tight">{initial ? "Editar lote" : "Novo lote"}</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid gap-5">
-          <div className="space-y-1.5">
-            <Label>Nome do lote</Label>
-            <Input value={nomeLote} onChange={(e) => setNomeLote(e.target.value)} className="h-11 rounded-2xl" />
+      <DialogContent className="max-w-5xl rounded-3xl p-0">
+        <div className="flex max-h-[85vh] flex-col overflow-hidden">
+          <div className="sticky top-0 z-10 border-b bg-background/95 p-6 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+            <DialogHeader>
+              <DialogTitle className="text-base tracking-tight">{initial ? "Editar lote" : "Novo lote"}</DialogTitle>
+            </DialogHeader>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Tipo de fornecimento</Label>
-            <Select value={tipoFornecimento} onValueChange={(v) => setTipo(v as TipoFornecimento)}>
-              <SelectTrigger className="h-11 rounded-2xl">
-                <SelectValue placeholder="Selecione" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIPOS_FORNECIMENTO.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {initial && loteLive && (
-            <Card className="rounded-3xl border p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-semibold tracking-tight">Itens do Lote</div>
-                  <div className="text-sm text-muted-foreground">
-                    Importação em massa via CSV (não abre nova janela).
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="rounded-full">
-                    {loteLive.itens.length} item(ns)
-                  </Badge>
-                  <Button variant="secondary" className="rounded-2xl" onClick={() => setOpenCsv(true)}>
-                    <Upload className="mr-2 size-4" />
-                    Importar CSV
-                  </Button>
-                </div>
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="grid gap-5">
+              <div className="space-y-1.5">
+                <Label>Nome do lote</Label>
+                <Input
+                  value={nomeLote}
+                  onChange={(e) => setNomeLote(e.target.value)}
+                  className="h-11 rounded-2xl"
+                />
               </div>
 
-              <div className="mt-4 overflow-hidden rounded-2xl border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead className="w-[120px]">Item</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead className="w-[120px]">Unid</TableHead>
-                      <TableHead className="w-[140px]">Total</TableHead>
-                      <TableHead className="w-[180px]">Valor unit.</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loteLive.itens.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                          Sem itens ainda. Use "Importar CSV" ou cadastre manualmente.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      loteLive.itens
-                        .slice()
-                        .sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem))
-                        .slice(0, 10)
-                        .map((it) => (
-                          <TableRow key={it.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium tabular-nums">{it.numeroItem}</TableCell>
-                            <TableCell>
-                              <div className="font-medium">{(it as any).nomeComercial ?? it.descricaoInterna}</div>
-                              <div className="text-xs text-muted-foreground line-clamp-1">{it.descricao}</div>
-                            </TableCell>
-                            <TableCell className="text-sm">{it.unidade}</TableCell>
-                            <TableCell className="tabular-nums">{it.total}</TableCell>
-                            <TableCell className="tabular-nums">
-                              {it.kind === "MANUTENCAO" ? "—" : moneyBRL((it as any).valorUnitario)}
+              <div className="space-y-1.5">
+                <Label>Tipo de fornecimento</Label>
+                <Select value={tipoFornecimento} onValueChange={(v) => setTipo(v as TipoFornecimento)}>
+                  <SelectTrigger className="h-11 rounded-2xl">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_FORNECIMENTO.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {initial && loteLive && (
+                <Card className="rounded-3xl border p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold tracking-tight">Itens do Lote</div>
+                      <div className="text-sm text-muted-foreground">
+                        Importação em massa via CSV (não abre nova janela).
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="rounded-full">
+                        {loteLive.itens.length} item(ns)
+                      </Badge>
+                      <Button variant="secondary" className="rounded-2xl" onClick={() => setOpenCsv(true)}>
+                        <Upload className="mr-2 size-4" />
+                        Importar CSV
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-2xl border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/40">
+                          <TableHead className="w-[120px]">Item</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="w-[120px]">Unid</TableHead>
+                          <TableHead className="w-[140px]">Total</TableHead>
+                          <TableHead className="w-[180px]">Valor unit.</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loteLive.itens.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                              Sem itens ainda. Use "Importar CSV" ou cadastre manualmente.
                             </TableCell>
                           </TableRow>
-                        ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              {loteLive.itens.length > 10 && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Prévia mostra as primeiras 10 linhas. Após importar, o lote exibirá todos os itens.
-                </div>
+                        ) : (
+                          loteLive.itens
+                            .slice()
+                            .sort((a, b) => compareNumeroItem(a.numeroItem, b.numeroItem))
+                            .slice(0, 10)
+                            .map((it) => (
+                              <TableRow key={it.id} className="hover:bg-muted/30">
+                                <TableCell className="font-medium tabular-nums">{it.numeroItem}</TableCell>
+                                <TableCell>
+                                  <div className="font-medium">{(it as any).nomeComercial ?? it.descricaoInterna}</div>
+                                  <div className="text-xs text-muted-foreground line-clamp-1">{it.descricao}</div>
+                                </TableCell>
+                                <TableCell className="text-sm">{it.unidade}</TableCell>
+                                <TableCell className="tabular-nums">{it.total}</TableCell>
+                                <TableCell className="tabular-nums">
+                                  {it.kind === "MANUTENCAO" ? "—" : moneyBRL((it as any).valorUnitario)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {loteLive.itens.length > 10 && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Prévia mostra as primeiras 10 linhas. Após importar, o lote exibirá todos os itens.
+                    </div>
+                  )}
+
+                  <ImportItensCsvDialog
+                    open={openCsv}
+                    onOpenChange={setOpenCsv}
+                    loteId={loteLive.id}
+                    loteTipo={tipoFornecimento}
+                    existingItems={loteLive.itens}
+                    onApply={(nextItems) => {
+                      onSetItens(loteLive.id, nextItems);
+                    }}
+                  />
+                </Card>
               )}
 
-              <ImportItensCsvDialog
-                open={openCsv}
-                onOpenChange={setOpenCsv}
-                loteId={loteLive.id}
-                loteTipo={tipoFornecimento}
-                existingItems={loteLive.itens}
-                onApply={(nextItems) => {
-                  onSetItens(loteLive.id, nextItems);
-                }}
-              />
-            </Card>
-          )}
-
-          {error && (
-            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {error}
+              {error && (
+                <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" className="rounded-2xl" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button className="rounded-2xl" onClick={submit}>
-              Salvar
-            </Button>
+          <div className="sticky bottom-0 z-10 border-t bg-background/95 p-6 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="secondary" className="rounded-2xl" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button className="rounded-2xl" onClick={submit}>
+                Salvar
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
@@ -1098,11 +1110,11 @@ function ItemDialog({
               <div className="space-y-1.5">
                 <Label>Nome comercial</Label>
                 <Input
-                    value={nomeComercial}
-                    onChange={(e) => setNomeComercial(e.target.value)}
-                    className="h-11 rounded-2xl"
-                    placeholder="Ex.: DCS"
-                  />
+                  value={nomeComercial}
+                  onChange={(e) => setNomeComercial(e.target.value)}
+                  className="h-11 rounded-2xl"
+                  placeholder="Ex.: DCS"
+                />
                 <div className="text-xs text-muted-foreground">
                   Usado nos selects de KITs e oportunidades (não mostra a descrição completa).
                 </div>
