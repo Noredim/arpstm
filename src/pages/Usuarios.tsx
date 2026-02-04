@@ -36,7 +36,8 @@ import { toast } from "@/hooks/use-toast";
 import type { UserRole, Usuario } from "@/lib/arp-types";
 import { dateTimeBR } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -76,11 +77,21 @@ export default function UsuariosPage() {
   const [role, setRole] = React.useState<UserRole>("COMERCIAL");
   const [ativo, setAtivo] = React.useState(true);
 
+  const [password, setPassword] = React.useState("");
+  const [passwordConfirm, setPasswordConfirm] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+
+  const isCreating = !editing;
+
   React.useEffect(() => {
     if (!open) return;
     setEmail(editing?.email ?? "");
     setRole(editing?.role ?? "COMERCIAL");
     setAtivo(editing?.ativo ?? true);
+
+    setPassword("");
+    setPasswordConfirm("");
+    setShowPassword(false);
   }, [editing, open]);
 
   if (!isAdmin) {
@@ -110,22 +121,49 @@ export default function UsuariosPage() {
       if (!ativo) e.push("O usuário master não pode ser desativado.");
     }
 
-    return e;
-  }, [ativo, email, editing, role, state.usuarios]);
+    if (!editing) {
+      if (!password || password.length < 6) e.push("Senha deve ter ao menos 6 caracteres.");
+      if (password !== passwordConfirm) e.push("As senhas não conferem.");
+    }
 
-  function submit() {
+    return e;
+  }, [ativo, email, editing, password, passwordConfirm, role, state.usuarios]);
+
+  async function submit() {
     try {
       if (editing) {
         updateUsuario(editing.id, { email: email.trim().toLowerCase(), role, ativo });
         toast({ title: "Usuário atualizado" });
-      } else {
-        createUsuario({ email: email.trim().toLowerCase(), role, ativo });
-        toast({ title: "Usuário criado" });
+        setOpen(false);
+        setEditing(null);
+        return;
       }
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        body: { email: normalizedEmail, password },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!(data as any)?.ok) {
+        throw new Error("Falha ao criar usuário no Supabase.");
+      }
+
+      createUsuario({ email: normalizedEmail, role, ativo });
+      toast({ title: "Usuário criado", description: "Conta criada no Supabase e liberada no sistema." });
+
       setOpen(false);
       setEditing(null);
     } catch (err: any) {
-      toast({ title: "Erro", description: String(err?.message ?? err), variant: "destructive" });
+      toast({
+        title: "Erro ao criar usuário",
+        description: String(err?.message ?? err),
+        variant: "destructive",
+      });
     }
   }
 
@@ -256,6 +294,44 @@ export default function UsuariosPage() {
               />
             </div>
 
+            {isCreating && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Senha</Label>
+                  <div className="relative">
+                    <Input
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-11 rounded-2xl pr-10"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="mínimo 6 caracteres"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Confirmar senha</Label>
+                  <Input
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                    className="h-11 rounded-2xl"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="repita a senha"
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Perfil</Label>
@@ -301,10 +377,16 @@ export default function UsuariosPage() {
               >
                 Cancelar
               </Button>
-              <Button className="rounded-2xl" onClick={submit} disabled={errors.length > 0}>
+              <Button className="rounded-2xl" onClick={() => void submit()} disabled={errors.length > 0}>
                 Salvar
               </Button>
             </div>
+
+            {isCreating && (
+              <div className="text-xs text-muted-foreground">
+                Ao salvar, o usuário será criado também no Supabase Authentication (com e-mail confirmado).
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
