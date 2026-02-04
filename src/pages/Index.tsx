@@ -11,7 +11,9 @@ const Index = () => {
         <div className="grid gap-6 p-6 md:grid-cols-[1.2fr_0.8fr] md:items-center md:p-8">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge className="rounded-full bg-primary text-primary-foreground">Gestão de ARP</Badge>
+              <Badge className="rounded-full bg-primary text-primary-foreground">
+                Gestão de ARP
+              </Badge>
               <Badge variant="secondary" className="rounded-full">
                 saldo em tempo real
               </Badge>
@@ -20,8 +22,9 @@ const Index = () => {
               Atas, lotes e itens no lugar certo — dentro da ATA.
             </h1>
             <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
-              Cadastre clientes, monte a estrutura completa da Ata (participantes, lotes, itens e equipamentos quando
-              aplicável) e gere oportunidades de adesão com validação imediata de saldo.
+              Cadastre clientes, monte a estrutura completa da Ata (participantes,
+              lotes, itens e equipamentos quando aplicável) e gere oportunidades
+              de adesão com validação imediata de saldo.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button asChild className="rounded-full">
@@ -37,7 +40,11 @@ const Index = () => {
 
           <div className="relative">
             <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl border bg-muted">
-              <img src="/placeholder.svg" alt="Visão geral" className="h-full w-full object-cover opacity-90" />
+              <img
+                src="/brand-stelmat.png"
+                alt="Stelmat"
+                className="h-full w-full object-contain p-8 opacity-95"
+              />
             </div>
             <div className="pointer-events-none absolute -bottom-3 -left-3 hidden rounded-2xl border bg-background/80 p-3 shadow-sm backdrop-blur sm:block">
               <div className="text-xs font-medium">Regras oficiais</div>

@@ -30,10 +30,12 @@ import {
   Map,
   MapPin,
   Shield,
-  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/components/auth/SessionProvider";
+import { BrandMark } from "@/components/app/brand-mark";
+import { AppWatermark } from "@/components/app/app-watermark";
+import { SidebarCollapseToggle } from "@/components/app/sidebar-collapse-toggle";
 
 const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
 
@@ -69,22 +71,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       ...(canSeeUsuario ? navUsuario : []),
     ];
     const current = all.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
-    if (location.pathname === "/") return "Gestão de ARP";
-    return current?.label ?? "Gestão de ARP";
+    if (location.pathname === "/") return "Gestão de Saldos de ARP";
+    return current?.label ?? "Gestão de Saldos de ARP";
   }, [canSeeBasico, canSeeUsuario, location.pathname]);
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="inset" collapsible="icon" className="bg-sidebar">
         <SidebarHeader className="gap-2">
-          <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <Sparkles className="size-5" />
-            </div>
-            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-semibold tracking-tight">ARP • Atas</div>
-              <div className="truncate text-xs text-sidebar-foreground/70">Controle de saldo e adesões</div>
-            </div>
+          <div className="rounded-xl px-2 py-2">
+            <BrandMark />
           </div>
           <SidebarSeparator />
         </SidebarHeader>
@@ -129,8 +125,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                    );
-                  })}
+                    </SidebarMenuItem>
+                  );
+                })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -188,8 +185,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="text-xs font-medium">Sessão</div>
               <div className="truncate text-[11px] text-sidebar-foreground/70">{user?.email ?? "—"}</div>
+              <AppWatermark />
             </div>
             <div className="flex items-center gap-2">
+              <SidebarCollapseToggle />
               <Badge variant="secondary" className="rounded-full border border-sidebar-border bg-background/70">
                 v1
               </Badge>
