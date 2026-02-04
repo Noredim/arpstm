@@ -18,15 +18,8 @@ type AppSettingsRow = {
   updated_at: string;
 };
 
-const BUCKET = "app-assets";
-
 function isPng(file: File) {
   return file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
-}
-
-function looksLikeRlsError(message: string) {
-  const m = (message ?? "").toLowerCase();
-  return m.includes("row-level security") || m.includes("violates row-level security");
 }
 
 function formatSupabaseError(err: any) {
@@ -35,6 +28,17 @@ function formatSupabaseError(err: any) {
   const status = err.statusCode ?? err.status ?? "";
   const details = err.details ?? err.error_description ?? "";
   return [status ? `HTTP ${status}` : "", message, details].filter(Boolean).join(" • ");
+}
+
+async function fileToDataUrl(file: File) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+  }
+  return `data:${file.type || "image/png"};base64,${btoa(binary)}`;
 }
 
 export default function AppSettingsPage() {
@@ -109,31 +113,17 @@ export default function AppSettingsPage() {
     };
   }, []);
 
-  async function assertBucketExists() {
-    const { data, error } = await supabase.storage.listBuckets();
-    if (error) throw error;
-    const exists = (data ?? []).some((b) => b.name === BUCKET);
-    if (!exists) {
-      throw new Error(`Bucket "${BUCKET}" não existe (crie em Storage no Supabase).`);
-    }
-  }
+  async function uploadViaFunction(png: File) {
+    const dataUrl = await fileToDataUrl(png);
 
-  async function uploadPngAndGetPublicUrl(png: File) {
-    await assertBucketExists();
-
-    const cleanName = png.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const path = `branding/${Date.now()}_${cleanName}`;
-
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, png, {
-      cacheControl: "3600",
-      upsert: true,
-      contentType: "image/png",
+    const { data, error } = await supabase.functions.invoke("upload-app-asset", {
+      body: { fileName: png.name, base64: dataUrl },
     });
 
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return data.publicUrl as string;
+    if (error) throw new Error(error.message);
+    const publicUrl = (data as any)?.publicUrl as string | undefined;
+    if (!publicUrl) throw new Error("Falha no upload: URL não retornada.");
+    return publicUrl;
   }
 
   async function onSave() {
@@ -161,14 +151,11 @@ export default function AppSettingsPage() {
         }
 
         try {
-          nextImageUrl = await uploadPngAndGetPublicUrl(file);
+          nextImageUrl = await uploadViaFunction(file);
         } catch (err: any) {
-          const msg = formatSupabaseError(err);
           toast({
             title: "Falha no upload",
-            description: looksLikeRlsError(msg)
-              ? `Bloqueado por RLS/Policy no Storage. Detalhe: ${msg}`
-              : msg,
+            description: formatSupabaseError(err),
             variant: "destructive",
           });
           setSaving(false);
@@ -215,7 +202,7 @@ export default function AppSettingsPage() {
                 <Badge variant="secondary" className="rounded-full">
                   Branding
                 </Badge>
-                <span>Armazenado no Supabase</span>
+                <span>Upload via Edge Function (sem travar por RLS)</span>
               </div>
             </div>
 
@@ -262,7 +249,7 @@ export default function AppSettingsPage() {
                       <div>
                         <div className="text-sm font-semibold tracking-tight">Upload de PNG</div>
                         <div className="text-xs text-muted-foreground">
-                          Bucket: <span className="font-medium text-foreground">{BUCKET}</span>
+                          Armazenamento no Supabase Storage (feito pelo servidor).
                         </div>
                       </div>
                     </div>
@@ -286,8 +273,8 @@ export default function AppSettingsPage() {
                   )}
 
                   <div className="mt-3 rounded-2xl border bg-background/70 px-4 py-3 text-xs text-muted-foreground">
-                    Se der erro no upload, confirme que o bucket <span className="font-medium">app-assets</span> existe e
-                    que as policies de Storage do <span className="font-medium">schema.sql</span> foram aplicadas.
+                    Observação: o bucket <span className="font-medium">app-assets</span> ainda precisa existir no
+                    Storage, mas o upload não depende de liberar policies no client.
                   </div>
                 </div>
               </div>
