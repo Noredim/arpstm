@@ -18,6 +18,8 @@ type AppSettingsRow = {
   updated_at: string;
 };
 
+const LOCAL_KEY = "dyad:app-settings:local";
+
 function isPng(file: File) {
   return file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
 }
@@ -41,11 +43,32 @@ async function fileToDataUrl(file: File) {
   return `data:${file.type || "image/png"};base64,${btoa(binary)}`;
 }
 
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { name?: string; description?: string; imageUrl?: string | null };
+    return {
+      name: String(parsed.name ?? "Gestão de ARP"),
+      description: String(parsed.description ?? "Controle de saldo e adesões"),
+      imageUrl: (parsed.imageUrl ?? null) as string | null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocal(data: { name: string; description: string; imageUrl: string | null }) {
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+}
+
 export default function AppSettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
   const [rowId, setRowId] = React.useState<string | null>(null);
+  const [missingTable, setMissingTable] = React.useState(false);
+
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
@@ -69,6 +92,8 @@ export default function AppSettingsPage() {
     async function load() {
       setLoading(true);
 
+      const local = loadLocal();
+
       const { data, error } = await supabase
         .from("app_settings")
         .select("*")
@@ -76,37 +101,59 @@ export default function AppSettingsPage() {
         .limit(1);
 
       if (error) {
+        const status = (error as any)?.status ?? (error as any)?.statusCode;
+        const msg = String((error as any)?.message ?? error).toLowerCase();
+        const isMissing = status === 404 || msg.includes("not found") || msg.includes("does not exist");
+
+        if (!mounted) return;
+
+        if (isMissing) {
+          setMissingTable(true);
+          setRowId(null);
+          setName(local?.name ?? "Gestão de ARP");
+          setDescription(local?.description ?? "Controle de saldo e adesões");
+          setImageUrl(local?.imageUrl ?? null);
+          setLoading(false);
+          return;
+        }
+
+        toast({
+          title: "Falha ao carregar do Supabase",
+          description: formatSupabaseError(error),
+          variant: "destructive",
+        });
+
+        setMissingTable(false);
+        setRowId(null);
+        setName(local?.name ?? "Gestão de ARP");
+        setDescription(local?.description ?? "Controle de saldo e adesões");
+        setImageUrl(local?.imageUrl ?? null);
         setLoading(false);
-        throw error;
+        return;
       }
 
       const row = (data?.[0] ?? null) as AppSettingsRow | null;
 
       if (!mounted) return;
 
+      setMissingTable(false);
+
       if (row) {
         setRowId(row.id);
-        setName(row.name ?? "");
-        setDescription(row.description ?? "");
-        setImageUrl(row.image_url ?? null);
+        setName(row.name ?? local?.name ?? "Gestão de ARP");
+        setDescription(row.description ?? local?.description ?? "Controle de saldo e adesões");
+        setImageUrl(row.image_url ?? local?.imageUrl ?? null);
       } else {
         setRowId(null);
-        setName("Gestão de ARP");
-        setDescription("Controle de saldo e adesões");
-        setImageUrl(null);
+        setName(local?.name ?? "Gestão de ARP");
+        setDescription(local?.description ?? "Controle de saldo e adesões");
+        setImageUrl(local?.imageUrl ?? null);
       }
 
       setLoading(false);
     }
 
-    load().catch((err) => {
-      toast({
-        title: "Erro ao carregar configurações",
-        description: String(err?.message ?? err),
-        variant: "destructive",
-      });
-      setLoading(false);
-    });
+    load();
 
     return () => {
       mounted = false;
@@ -163,6 +210,20 @@ export default function AppSettingsPage() {
         }
       }
 
+      // Se a tabela não existe, salva local para não bloquear o usuário.
+      if (missingTable) {
+        saveLocal({ name: nextName, description: nextDesc, imageUrl: nextImageUrl ?? null });
+        setImageUrl(nextImageUrl ?? null);
+        setFile(null);
+
+        toast({
+          title: "Salvo localmente",
+          description: 'A tabela "app_settings" não existe no Supabase; por enquanto foi salvo só neste navegador.',
+          variant: "destructive",
+        });
+        return;
+      }
+
       const payload = {
         name: nextName,
         description: nextDesc,
@@ -202,7 +263,10 @@ export default function AppSettingsPage() {
                 <Badge variant="secondary" className="rounded-full">
                   Branding
                 </Badge>
-                <span>Upload via Edge Function (sem travar por RLS)</span>
+                <Badge className="rounded-full bg-indigo-600 text-white">Upload via Edge Function</Badge>
+                {missingTable && (
+                  <Badge className="rounded-full bg-rose-600 text-white">Supabase: tabela ausente</Badge>
+                )}
               </div>
             </div>
 
@@ -211,6 +275,14 @@ export default function AppSettingsPage() {
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </div>
+
+          {missingTable && (
+            <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+              O Supabase está respondendo <span className="font-semibold">404</span> para{" "}
+              <span className="font-mono text-xs">public.app_settings</span>. Enquanto isso, esta tela salva localmente
+              para não bloquear o uso.
+            </div>
+          )}
         </Card>
 
         <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
@@ -271,11 +343,6 @@ export default function AppSettingsPage() {
                       Arquivo inválido: envie apenas .png
                     </div>
                   )}
-
-                  <div className="mt-3 rounded-2xl border bg-background/70 px-4 py-3 text-xs text-muted-foreground">
-                    Observação: o bucket <span className="font-medium">app-assets</span> ainda precisa existir no
-                    Storage, mas o upload não depende de liberar policies no client.
-                  </div>
                 </div>
               </div>
             </div>
