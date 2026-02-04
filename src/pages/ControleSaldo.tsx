@@ -186,7 +186,9 @@ export default function ControleSaldoPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Controle de itens</CardTitle>
-              <CardDescription>Todos os itens do lote com saldo atualizado.</CardDescription>
+              <CardDescription>
+                Todos os itens do lote com saldo atualizado e reservas em oportunidades em aberto.
+              </CardDescription>
             </div>
             <Badge variant="secondary" className="rounded-full">
               {rows.length} item(s)
@@ -203,10 +205,11 @@ export default function ControleSaldoPage() {
                 <Table>
                   <TableHeader className="bg-muted/40">
                     <TableRow>
-                      <TableHead className="w-[40%]">Item</TableHead>
+                      <TableHead className="w-[36%]">Item</TableHead>
                       <TableHead className="text-right">Saldo base</TableHead>
                       <TableHead className="text-right">Utilizado</TableHead>
                       <TableHead className="text-right">Saldo disponível</TableHead>
+                      <TableHead className="text-right">Saldo de oportunidades</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -226,6 +229,9 @@ export default function ControleSaldoPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <SaldoBadge value={row.saldoDisponivel} />
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-indigo-700">
+                          {numberFormatter(row.reservadoEmAberto)}
                         </TableCell>
                       </TableRow>
                     ))}

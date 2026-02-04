@@ -7,6 +7,7 @@ export type SaldoRow = {
   saldoBase: number;
   utilizado: number;
   saldoDisponivel: number;
+  reservadoEmAberto: number;
 };
 
 export type SaldoResumo = {
@@ -21,6 +22,10 @@ export function normalizeOportunidadeStatus(status?: string | null) {
 
 export function isStatusGanhamos(status?: string | null) {
   return normalizeOportunidadeStatus(status) === "GANHAMOS";
+}
+
+export function isStatusAberta(status?: string | null) {
+  return normalizeOportunidadeStatus(status) === "ABERTA";
 }
 
 export function getSaldoBaseByTipo(item: ArpItem, tipo: SaldoTipo) {
@@ -43,6 +48,31 @@ export function computeUtilizadoPorItem(params: {
     if (opp.arpId !== arpId) continue;
     if (excludeOportunidadeId && opp.id === excludeOportunidadeId) continue;
     if (!isStatusGanhamos(opp.status)) continue;
+
+    const isParticipante = participantesSet.has(opp.clienteId);
+    if (tipoSaldo === "PARTICIPANTES" && !isParticipante) continue;
+    if (tipoSaldo === "CARONA" && isParticipante) continue;
+
+    total += getOpportunityItemTotals({ oportunidade: opp, loteId, itemId }).total;
+  }
+
+  return total;
+}
+
+export function computeReservadoAbertoPorItem(params: {
+  oportunidades: Oportunidade[];
+  arpId: string;
+  loteId: string;
+  itemId: string;
+  tipoSaldo: SaldoTipo;
+  participantesSet: Set<string>;
+}): number {
+  const { oportunidades, arpId, loteId, itemId, tipoSaldo, participantesSet } = params;
+  let total = 0;
+
+  for (const opp of oportunidades) {
+    if (opp.arpId !== arpId) continue;
+    if (!isStatusAberta(opp.status)) continue;
 
     const isParticipante = participantesSet.has(opp.clienteId);
     if (tipoSaldo === "PARTICIPANTES" && !isParticipante) continue;
@@ -90,25 +120,32 @@ export function buildSaldoRows(params: {
 
   const participantesSet = new Set(arp.participantes ?? []);
   const usageMap = new Map<string, number>();
+  const abertoMap = new Map<string, number>();
 
   for (const opp of oportunidades) {
     if (opp.arpId !== arp.id) continue;
-    if (!isStatusGanhamos(opp.status)) continue;
 
     const isParticipante = participantesSet.has(opp.clienteId);
     if (tipoSaldo === "PARTICIPANTES" && !isParticipante) continue;
     if (tipoSaldo === "CARONA" && isParticipante) continue;
 
+    const isGanhos = isStatusGanhamos(opp.status);
+    const isAberta = isStatusAberta(opp.status);
+
     for (const item of opp.itens ?? []) {
       if (item.loteId !== lote.id) continue;
       const key = item.arpItemId;
-      usageMap.set(key, (usageMap.get(key) ?? 0) + (Number(item.quantidade) || 0));
+      const qty = Number(item.quantidade) || 0;
+      if (isGanhos) usageMap.set(key, (usageMap.get(key) ?? 0) + qty);
+      if (isAberta) abertoMap.set(key, (abertoMap.get(key) ?? 0) + qty);
     }
 
     for (const kitItem of opp.kitItens ?? []) {
       if (kitItem.loteId !== lote.id) continue;
       const key = kitItem.arpItemId;
-      usageMap.set(key, (usageMap.get(key) ?? 0) + (Number(kitItem.quantidadeTotal) || 0));
+      const qty = Number(kitItem.quantidadeTotal) || 0;
+      if (isGanhos) usageMap.set(key, (usageMap.get(key) ?? 0) + qty);
+      if (isAberta) abertoMap.set(key, (abertoMap.get(key) ?? 0) + qty);
     }
   }
 
@@ -118,8 +155,9 @@ export function buildSaldoRows(params: {
     .map((item) => {
       const saldoBase = getSaldoBaseByTipo(item, tipoSaldo);
       const utilizado = usageMap.get(item.id) ?? 0;
+      const reservadoEmAberto = abertoMap.get(item.id) ?? 0;
       const saldoDisponivel = saldoBase - utilizado;
-      return { item, saldoBase, utilizado, saldoDisponivel };
+      return { item, saldoBase, utilizado, saldoDisponivel, reservadoEmAberto };
     });
 
   const resumo = rows.reduce(
