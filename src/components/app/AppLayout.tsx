@@ -146,7 +146,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                    </SidebarMenuItem>
                     );
                   })}
                 </SidebarMenu>
