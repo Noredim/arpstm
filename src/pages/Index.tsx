@@ -39,13 +39,7 @@ const Index = () => {
           </div>
 
           <div className="relative">
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl border bg-muted">
-              <img
-                src="/ARPSSTEL.png"
-                alt="Stelmat"
-                className="h-full w-full object-contain p-6"
-              />
-            </div>
+            <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl border bg-muted" />
             <div className="pointer-events-none absolute -bottom-3 -left-3 hidden rounded-2xl border bg-background/80 p-3 shadow-sm backdrop-blur sm:block">
               <div className="text-xs font-medium">Regras oficiais</div>
               <div className="text-[11px] text-muted-foreground">Participante / Carona / Limites</div>
