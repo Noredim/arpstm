@@ -24,6 +24,11 @@ function isPng(file: File) {
   return file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
 }
 
+function looksLikeRlsError(message: string) {
+  const m = (message ?? "").toLowerCase();
+  return m.includes("row-level security") || m.includes("violates row-level security");
+}
+
 export default function AppSettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -73,7 +78,6 @@ export default function AppSettingsPage() {
         setDescription(row.description ?? "");
         setImageUrl(row.image_url ?? null);
       } else {
-        // no row yet: initialize UI with defaults
         setRowId(null);
         setName("Gestão de ARP");
         setDescription("Controle de saldo e adesões");
@@ -97,24 +101,7 @@ export default function AppSettingsPage() {
     };
   }, []);
 
-  async function ensureBucketExists() {
-    const { data: buckets, error } = await supabase.storage.listBuckets();
-    if (error) throw error;
-    const exists = (buckets ?? []).some((b) => b.name === BUCKET);
-    if (exists) return;
-
-    // create as public so we can show image without signed URLs
-    const { error: createError } = await supabase.storage.createBucket(BUCKET, {
-      public: true,
-      fileSizeLimit: 5 * 1024 * 1024,
-      allowedMimeTypes: ["image/png"],
-    });
-    if (createError) throw createError;
-  }
-
   async function uploadPngAndGetPublicUrl(png: File) {
-    await ensureBucketExists();
-
     const cleanName = png.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
     const path = `branding/${Date.now()}_${cleanName}`;
 
@@ -153,7 +140,21 @@ export default function AppSettingsPage() {
           setSaving(false);
           return;
         }
-        nextImageUrl = await uploadPngAndGetPublicUrl(file);
+
+        try {
+          nextImageUrl = await uploadPngAndGetPublicUrl(file);
+        } catch (err: any) {
+          const msg = String(err?.message ?? err);
+          toast({
+            title: "Upload bloqueado",
+            description: looksLikeRlsError(msg)
+              ? 'O Storage está bloqueando o upload por RLS. Crie o bucket "app-assets" e aplique as policies de Storage do schema.sql.'
+              : msg,
+            variant: "destructive",
+          });
+          setSaving(false);
+          return;
+        }
       }
 
       const payload = {
@@ -242,7 +243,7 @@ export default function AppSettingsPage() {
                       <div>
                         <div className="text-sm font-semibold tracking-tight">Upload de PNG</div>
                         <div className="text-xs text-muted-foreground">
-                          Recomendado: 512×512 (logo) ou 1200×630 (capa).
+                          Bucket: <span className="font-medium text-foreground">{BUCKET}</span>
                         </div>
                       </div>
                     </div>
@@ -264,6 +265,11 @@ export default function AppSettingsPage() {
                       Arquivo inválido: envie apenas .png
                     </div>
                   )}
+
+                  <div className="mt-3 rounded-2xl border bg-background/70 px-4 py-3 text-xs text-muted-foreground">
+                    Se o upload falhar por permissão, aplique as policies de <span className="font-medium">Storage</span>{" "}
+                    em <span className="font-medium">src/integrations/supabase/schema.sql</span>.
+                  </div>
                 </div>
               </div>
             </div>
@@ -277,7 +283,7 @@ export default function AppSettingsPage() {
               <div className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="grid size-12 place-items-center overflow-hidden rounded-2xl border bg-muted">
-                    {(filePreview || imageUrl) ? (
+                    {filePreview || imageUrl ? (
                       <img
                         src={filePreview ?? imageUrl ?? ""}
                         alt="Imagem do app"

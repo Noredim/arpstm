@@ -26,7 +26,47 @@ to authenticated
 using (public.has_role(array['ADMIN']))
 with check (public.has_role(array['ADMIN']));
 
--- Ensure there is at least one row (optional seed suggestion)
--- insert into public.app_settings (name, description)
--- values ('Gestão de ARP', 'Controle de saldo e adesões')
--- on conflict do nothing;
+-- Storage policies for bucket app-assets
+-- IMPORTANT: create the bucket "app-assets" in Supabase Storage (recommended as public).
+-- RLS on storage.objects is enabled by default and needs explicit policies.
+
+drop policy if exists "app_assets_read_authenticated" on storage.objects;
+create policy "app_assets_read_authenticated"
+on storage.objects
+for select
+to authenticated
+using (bucket_id = 'app-assets');
+
+drop policy if exists "app_assets_insert_admin" on storage.objects;
+create policy "app_assets_insert_admin"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'app-assets'
+  and public.has_role(array['ADMIN'])
+);
+
+drop policy if exists "app_assets_update_admin" on storage.objects;
+create policy "app_assets_update_admin"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'app-assets'
+  and public.has_role(array['ADMIN'])
+)
+with check (
+  bucket_id = 'app-assets'
+  and public.has_role(array['ADMIN'])
+);
+
+drop policy if exists "app_assets_delete_admin" on storage.objects;
+create policy "app_assets_delete_admin"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'app-assets'
+  and public.has_role(array['ADMIN'])
+);
