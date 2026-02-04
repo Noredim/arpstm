@@ -1,5 +1,5 @@
 import * as React from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -17,10 +17,11 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, Factory, FileText, Handshake, Home, Map, MapPin, Shield, Sparkles } from "lucide-react";
-
-import { useArpStore } from "@/store/arp-store";
+import { Boxes, Building2, Factory, FileText, Handshake, Home, LogOut, Map, MapPin, Shield, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useSession } from "@/components/auth/SessionProvider";
 
 const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
 
@@ -41,11 +42,12 @@ const navUsuario = [{ to: "/usuarios", label: "Usuários", icon: Shield }] as co
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { getCurrentUser } = useArpStore();
-  const me = getCurrentUser();
+  const navigate = useNavigate();
+  const { user } = useSession();
 
-  const canSeeBasico = me.role === "ADMIN" || me.role === "GESTOR";
-  const canSeeUsuario = me.role === "ADMIN";
+  // Enquanto o passo 2 (profiles/roles) não está ligado no app, mantemos menus completos.
+  const canSeeBasico = true;
+  const canSeeUsuario = true;
 
   const pageTitle = React.useMemo(() => {
     const all = [
@@ -115,7 +117,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                    );
+                    </SidebarMenuItem>
+                  );
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -160,8 +163,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                             <span>{item.label}</span>
                           </NavLink>
                         </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -174,12 +178,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="text-xs font-medium">Sessão</div>
               <div className="truncate text-[11px] text-sidebar-foreground/70">
-                {me.email} • {me.role}
+                {user?.email ?? "—"}
               </div>
             </div>
-            <Badge variant="secondary" className="rounded-full border border-sidebar-border bg-background/70">
-              v1
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="rounded-full border border-sidebar-border bg-background/70">
+                v1
+              </Badge>
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-9 w-9 rounded-2xl"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate("/login");
+                }}
+                title="Sair"
+              >
+                <LogOut className="size-4" />
+              </Button>
+            </div>
           </div>
         </SidebarFooter>
       </Sidebar>
