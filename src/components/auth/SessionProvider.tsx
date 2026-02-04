@@ -10,6 +10,18 @@ type SessionContextValue = {
 
 const SessionContext = React.createContext<SessionContextValue | null>(null);
 
+const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
+
+async function promoteMasterIfNeeded(session: Session | null) {
+  const email = session?.user?.email ?? "";
+  if (!email) return;
+  if (email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) return;
+
+  await supabase.functions.invoke("promote-master", {
+    body: { email },
+  });
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<Session | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -21,11 +33,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       setSession(data.session ?? null);
       setLoading(false);
+      void promoteMasterIfNeeded(data.session ?? null);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession ?? null);
       setLoading(false);
+
+      if (event === "SIGNED_IN") {
+        void promoteMasterIfNeeded(nextSession ?? null);
+      }
     });
 
     return () => {

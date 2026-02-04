@@ -20,7 +20,6 @@ import Usuarios from "./pages/Usuarios";
 import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import ControleSaldo from "./pages/ControleSaldo";
-import AppSettings from "./pages/AppSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,14 +64,6 @@ const App = () => (
                 element={
                   <RequireAuth>
                     <Usuarios />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/app-settings"
-                element={
-                  <RequireAuth>
-                    <AppSettings />
                   </RequireAuth>
                 }
               />
