@@ -37,7 +37,7 @@ import type { UserRole, Usuario } from "@/lib/arp-types";
 import { dateTimeBR } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
 import { supabase } from "@/integrations/supabase/client";
-import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -68,6 +68,8 @@ export default function UsuariosPage() {
 
   const me = getCurrentUser();
   const isAdmin = me.role === "ADMIN";
+  const isMaster = me.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
+  const canResetPasswords = isAdmin && isMaster;
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Usuario | null>(null);
@@ -77,9 +79,15 @@ export default function UsuariosPage() {
   const [role, setRole] = React.useState<UserRole>("COMERCIAL");
   const [ativo, setAtivo] = React.useState(true);
 
+  // criação
   const [password, setPassword] = React.useState("");
   const [passwordConfirm, setPasswordConfirm] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
+
+  // redefinição (edição)
+  const [resetPassword, setResetPassword] = React.useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = React.useState("");
+  const [showResetPassword, setShowResetPassword] = React.useState(false);
 
   const isCreating = !editing;
 
@@ -92,6 +100,10 @@ export default function UsuariosPage() {
     setPassword("");
     setPasswordConfirm("");
     setShowPassword(false);
+
+    setResetPassword("");
+    setResetPasswordConfirm("");
+    setShowResetPassword(false);
   }, [editing, open]);
 
   if (!isAdmin) {
@@ -114,8 +126,8 @@ export default function UsuariosPage() {
     if (editing && v && state.usuarios.some((u) => u.id !== editing.id && u.email.toLowerCase() === v))
       e.push("E-mail já cadastrado.");
 
-    const isMaster = (editing?.email ?? "").toLowerCase() === MASTER_EMAIL.toLowerCase();
-    if (isMaster) {
+    const isMasterUser = (editing?.email ?? "").toLowerCase() === MASTER_EMAIL.toLowerCase();
+    if (isMasterUser) {
       if (v !== MASTER_EMAIL.toLowerCase()) e.push("O usuário master não pode ter o e-mail alterado.");
       if (role !== "ADMIN") e.push("O usuário master deve permanecer ADMIN.");
       if (!ativo) e.push("O usuário master não pode ser desativado.");
@@ -126,13 +138,44 @@ export default function UsuariosPage() {
       if (password !== passwordConfirm) e.push("As senhas não conferem.");
     }
 
+    if (editing && canResetPasswords) {
+      if (resetPassword || resetPasswordConfirm) {
+        if (!resetPassword || resetPassword.length < 6) e.push("Nova senha deve ter ao menos 6 caracteres.");
+        if (resetPassword !== resetPasswordConfirm) e.push("As novas senhas não conferem.");
+      }
+    }
+
     return e;
-  }, [ativo, email, editing, password, passwordConfirm, role, state.usuarios]);
+  }, [
+    ativo,
+    canResetPasswords,
+    email,
+    editing,
+    password,
+    passwordConfirm,
+    resetPassword,
+    resetPasswordConfirm,
+    role,
+    state.usuarios,
+  ]);
 
   async function submit() {
     try {
       if (editing) {
         updateUsuario(editing.id, { email: email.trim().toLowerCase(), role, ativo });
+
+        if (canResetPasswords && resetPassword.trim()) {
+          const targetEmail = email.trim().toLowerCase();
+          const { data, error } = await supabase.functions.invoke("reset-user-password", {
+            body: { email: targetEmail, newPassword: resetPassword },
+          });
+
+          if (error) throw new Error(error.message);
+          if (!(data as any)?.ok) throw new Error("Falha ao redefinir senha no Supabase.");
+
+          toast({ title: "Senha redefinida", description: `Senha atualizada para ${targetEmail}` });
+        }
+
         toast({ title: "Usuário atualizado" });
         setOpen(false);
         setEditing(null);
@@ -160,7 +203,7 @@ export default function UsuariosPage() {
       setEditing(null);
     } catch (err: any) {
       toast({
-        title: "Erro ao criar usuário",
+        title: "Erro ao salvar usuário",
         description: String(err?.message ?? err),
         variant: "destructive",
       });
@@ -212,13 +255,13 @@ export default function UsuariosPage() {
                   .slice()
                   .sort((a, b) => a.email.localeCompare(b.email))
                   .map((u) => {
-                    const isMaster = u.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
+                    const isMasterRow = u.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
                     const isCurrent = u.email.toLowerCase() === state.currentUserEmail.toLowerCase();
                     return (
                       <TableRow key={u.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
                           {u.email}
-                          {isMaster && (
+                          {isMasterRow && (
                             <Badge className="ml-2 rounded-full bg-indigo-600 text-white">master</Badge>
                           )}
                           {isCurrent && (
@@ -262,7 +305,7 @@ export default function UsuariosPage() {
                               size="icon"
                               className="rounded-xl text-destructive hover:text-destructive"
                               onClick={() => setRemoveId(u.id)}
-                              disabled={isMaster}
+                              disabled={isMasterRow}
                             >
                               <Trash2 className="size-4" />
                             </Button>
@@ -355,6 +398,62 @@ export default function UsuariosPage() {
                 <Switch checked={ativo} onCheckedChange={setAtivo} />
               </div>
             </div>
+
+            {editing && canResetPasswords && (
+              <div className="rounded-3xl border bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-10 place-items-center rounded-2xl bg-background">
+                    <KeyRound className="size-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold tracking-tight">Redefinir senha (opcional)</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Preencha apenas se quiser trocar a senha no Supabase Authentication.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Nova senha</Label>
+                    <div className="relative">
+                      <Input
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        className="h-11 rounded-2xl pr-10"
+                        type={showResetPassword ? "text" : "password"}
+                        placeholder="mínimo 6 caracteres"
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPassword((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                        aria-label={showResetPassword ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {showResetPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Confirmar nova senha</Label>
+                    <Input
+                      value={resetPasswordConfirm}
+                      onChange={(e) => setResetPasswordConfirm(e.target.value)}
+                      className="h-11 rounded-2xl"
+                      type={showResetPassword ? "text" : "password"}
+                      placeholder="repita a senha"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 text-xs text-muted-foreground">
+                  A redefinição é feita por e-mail e só funciona se o usuário existir no Supabase Authentication.
+                </div>
+              </div>
+            )}
 
             {errors.length > 0 && (
               <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
