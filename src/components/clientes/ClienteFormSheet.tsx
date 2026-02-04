@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Cidade, Cliente, Esfera, Estado } from "@/lib/arp-types";
 import { digitsOnly, formatCnpj } from "@/lib/arp-utils";
+import { isValidCnpj } from "@/lib/cnpj";
 
 type Props = {
   open: boolean;
@@ -82,9 +83,12 @@ export function ClienteFormSheet({
 
   function submit() {
     const cnpjDigits = digitsOnly(cnpj);
+
     if (!nome.trim()) return setError("Informe o nome do cliente.");
-    if (cnpjDigits.length !== 14) return setError("Informe um CNPJ válido (14 dígitos).");
+    if (cidadesAtivas.length === 0) return setError("Cadastre ao menos 1 cidade ativa antes de criar clientes.");
     if (!cidade.trim()) return setError("Selecione a cidade.");
+    if (cnpjDigits.length !== 14) return setError("Informe um CNPJ válido (14 dígitos).");
+    if (!isValidCnpj(cnpjDigits)) return setError("CNPJ inválido.");
     if (cnpjTaken?.(cnpjDigits)) return setError("Este CNPJ já está cadastrado.");
 
     onSubmit({ nome: nome.trim(), cnpj: cnpjDigits, cidade: cidade.trim(), esfera });
@@ -142,7 +146,7 @@ export function ClienteFormSheet({
 
             <div className="space-y-1.5">
               <Label>Cidade</Label>
-              <Select value={cidade} onValueChange={setCidade}>
+              <Select value={cidade} onValueChange={setCidade} disabled={cidadesAtivas.length === 0}>
                 <SelectTrigger className="h-11 rounded-2xl">
                   <SelectValue placeholder={cidadeOptions.length ? "Selecione a cidade" : "Cadastre cidades primeiro"} />
                 </SelectTrigger>
@@ -171,7 +175,7 @@ export function ClienteFormSheet({
               <Button variant="secondary" className="rounded-2xl" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button className="rounded-2xl" onClick={submit}>
+              <Button className="rounded-2xl" onClick={submit} disabled={cidadesAtivas.length === 0}>
                 Salvar
               </Button>
             </div>
