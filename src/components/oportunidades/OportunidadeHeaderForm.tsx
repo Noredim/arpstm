@@ -50,12 +50,14 @@ export function OportunidadeHeaderForm({
   clientes,
   onChange,
   onNewCliente,
+  readOnly,
 }: {
   draft: OportunidadeHeaderDraft;
   arps: Arp[];
   clientes: Cliente[];
   onChange: (patch: Partial<OportunidadeHeaderDraft>) => void;
   onNewCliente: () => void;
+  readOnly?: boolean;
 }) {
   const arp = React.useMemo(() => arps.find((a) => a.id === draft.arpId), [arps, draft.arpId]);
 
@@ -68,10 +70,14 @@ export function OportunidadeHeaderForm({
             <Badge variant="secondary" className="rounded-full">
               {arp?.nomeAta ?? "ATA"}
             </Badge>
-            <Badge className="rounded-full bg-indigo-600 text-white">Rascunho</Badge>
+            <Badge className={`rounded-full ${readOnly ? "bg-slate-600 text-white" : "bg-indigo-600 text-white"}`}>
+              {readOnly ? "Fechada" : "Rascunho"}
+            </Badge>
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Preencha os dados obrigatórios e adicione itens (avulsos e/ou via kits).
+            {readOnly
+              ? "Oportunidade encerrada: edição bloqueada (modo demonstrativo)."
+              : "Preencha os dados obrigatórios e adicione itens (avulsos e/ou via kits)."}
           </div>
         </div>
 
@@ -95,12 +101,17 @@ export function OportunidadeHeaderForm({
             onChange={(e) => onChange({ titulo: e.target.value })}
             placeholder="Ex.: Adesão ARP para ..."
             className="h-11 rounded-2xl"
+            disabled={Boolean(readOnly)}
           />
         </div>
 
         <div className="space-y-1.5">
           <Label>Status</Label>
-          <Select value={draft.status} onValueChange={(v) => onChange({ status: v as OportunidadeStatus })}>
+          <Select
+            value={draft.status}
+            onValueChange={(v) => onChange({ status: v as OportunidadeStatus })}
+            disabled={Boolean(readOnly)}
+          >
             <SelectTrigger className="h-11 rounded-2xl">
               <SelectValue />
             </SelectTrigger>
@@ -117,12 +128,19 @@ export function OportunidadeHeaderForm({
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label>Cliente (obrigatório)</Label>
-            <Button variant="secondary" size="sm" className="h-8 rounded-2xl" onClick={onNewCliente} type="button">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8 rounded-2xl"
+              onClick={onNewCliente}
+              type="button"
+              disabled={Boolean(readOnly)}
+            >
               <Plus className="mr-2 size-3.5" />
               Novo cliente
             </Button>
           </div>
-          <Select value={draft.clienteId} onValueChange={(v) => onChange({ clienteId: v })}>
+          <Select value={draft.clienteId} onValueChange={(v) => onChange({ clienteId: v })} disabled={Boolean(readOnly)}>
             <SelectTrigger className="h-11 rounded-2xl">
               <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
@@ -144,6 +162,7 @@ export function OportunidadeHeaderForm({
           <Select
             value={draft.temperatura}
             onValueChange={(v) => onChange({ temperatura: v as OportunidadeTemperatura })}
+            disabled={Boolean(readOnly)}
           >
             <SelectTrigger className="h-11 rounded-2xl">
               <SelectValue />
@@ -171,6 +190,7 @@ export function OportunidadeHeaderForm({
               });
             }}
             className="h-11 rounded-2xl"
+            disabled={Boolean(readOnly)}
           />
         </div>
 
@@ -181,6 +201,7 @@ export function OportunidadeHeaderForm({
             value={draft.prazoFechamento}
             onChange={(e) => onChange({ prazoFechamento: e.target.value })}
             className="h-11 rounded-2xl"
+            disabled={Boolean(readOnly)}
           />
           <div className="text-xs text-muted-foreground">Por padrão, é data de abertura + 60 dias.</div>
         </div>
@@ -192,6 +213,7 @@ export function OportunidadeHeaderForm({
             onChange={(e) => onChange({ descricao: e.target.value })}
             className="min-h-[90px] rounded-2xl"
             placeholder="Contexto, observações, próximos passos…"
+            disabled={Boolean(readOnly)}
           />
         </div>
       </div>

@@ -12,11 +12,13 @@ export function AddKitSection({
   kitItems,
   allowedKitIds,
   onAddKitItems,
+  disabled,
 }: {
   kits: Kit[];
   kitItems: KitItem[];
   allowedKitIds: Set<string>;
   onAddKitItems: (items: Array<{ loteId: string; arpItemId: string; quantidade: number }>, kitNome: string) => void;
+  disabled?: boolean;
 }) {
   const [kitId, setKitId] = React.useState<string>("");
 
@@ -28,6 +30,8 @@ export function AddKitSection({
   }, [allowedKitIds, kits]);
 
   function add() {
+    if (disabled) return;
+
     if (!kitId) {
       toast({ title: "Selecione um kit", variant: "destructive" });
       return;
@@ -66,7 +70,7 @@ export function AddKitSection({
           </div>
         </div>
 
-        <Button className="rounded-2xl" onClick={add} disabled={!kitId}>
+        <Button className="rounded-2xl" onClick={add} disabled={disabled || !kitId}>
           <Plus className="mr-2 size-4" />
           Adicionar kit
         </Button>
@@ -74,7 +78,7 @@ export function AddKitSection({
 
       <div className="mt-4 max-w-xl space-y-1.5">
         <Label>Kit</Label>
-        <Select value={kitId} onValueChange={setKitId}>
+        <Select value={kitId} onValueChange={setKitId} disabled={Boolean(disabled)}>
           <SelectTrigger className="h-11 rounded-2xl">
             <SelectValue placeholder={available.length ? "Selecione..." : "Nenhum kit disponível para esta ATA"} />
           </SelectTrigger>

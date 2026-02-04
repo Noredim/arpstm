@@ -2,7 +2,6 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -22,8 +21,6 @@ function computeValorUnitario(item: ArpItem, tipo: TipoFornecimento) {
   if (tipo === "MANUTENCAO") {
     return (item as ArpItemManutencao).valorUnitarioMensal || 0;
   }
-  // COMODATO: aqui seguimos seu pedido: valorTotalLinha tratado como mensal
-  // (assumimos valor unitário do item da ATA como valor mensal para a linha do comodato)
   return (item as ArpItemFornecimento).valorUnitario || 0;
 }
 
@@ -85,6 +82,7 @@ export function OportunidadeItensGrid({
   rows,
   onRows,
   oportunidadesAll,
+  disabled,
 }: {
   oportunidadeId: string;
   arp?: Arp;
@@ -92,6 +90,7 @@ export function OportunidadeItensGrid({
   rows: GridRow[];
   onRows: (next: GridRow[]) => void;
   oportunidadesAll: Oportunidade[];
+  disabled?: boolean;
 }) {
   const lotes = arp?.lotes ?? [];
   const lotesById = React.useMemo(() => Object.fromEntries(lotes.map((l) => [l.id, l])), [lotes]);
@@ -102,7 +101,7 @@ export function OportunidadeItensGrid({
     return out;
   }, [lotes]);
 
-  const canEdit = Boolean(arp) && Boolean(cliente);
+  const canEdit = Boolean(arp) && Boolean(cliente) && !disabled;
 
   const computed = React.useMemo(() => {
     const clienteId = cliente?.id ?? "";
@@ -111,7 +110,6 @@ export function OportunidadeItensGrid({
     const next = rows.map((r) => {
       const lote = lotesById[r.loteId];
       const item = itensById[r.arpItemId];
-      const tipo = lote?.tipoFornecimento;
 
       if (!arp || !clienteId) {
         return { ...r, error: "Selecione o cliente para validar saldo." };
@@ -139,7 +137,6 @@ export function OportunidadeItensGrid({
         return { ...r, error: undefined };
       }
 
-      // CARONA
       const limite = limitePorOportunidadeCarona(item);
       const base = baseSaldoCarona(item);
       const usados = sumUtilizado({
@@ -167,7 +164,6 @@ export function OportunidadeItensGrid({
   }, [arp, cliente?.id, itensById, lotesById, oportunidadeId, oportunidadesAll, rows]);
 
   React.useEffect(() => {
-    // mantém o estado sincronizado com os erros calculados
     const changed =
       computed.rows.length !== rows.length ||
       computed.rows.some((r, idx) => (rows[idx]?.error ?? "") !== (r.error ?? ""));
@@ -197,38 +193,6 @@ export function OportunidadeItensGrid({
     onRows(rows.filter((r) => r.id !== id));
   }
 
-  const linhasCalc = React.useMemo(() => {
-    return rows
-      .map((r) => {
-        const lote = lotesById[r.loteId];
-        const item = itensById[r.arpItemId];
-        if (!lote || !item) return null;
-
-        const unit = computeValorUnitario(item, lote.tipoFornecimento);
-        const total = round2((Number(r.quantidade) || 0) * unit);
-
-        const anual =
-          lote.tipoFornecimento === "COMODATO" || lote.tipoFornecimento === "MANUTENCAO"
-            ? round2(total * 12)
-            : undefined;
-
-        return {
-          id: r.id,
-          loteId: r.loteId,
-          tipoFornecimento: lote.tipoFornecimento,
-          valorTotalLinha: total,
-          valorTotalLinhaAnual: anual,
-        };
-      })
-      .filter(Boolean) as Array<{
-      id: string;
-      loteId: string;
-      tipoFornecimento: TipoFornecimento;
-      valorTotalLinha: number;
-      valorTotalLinhaAnual?: number;
-    }>;
-  }, [itensById, lotesById, rows]);
-
   return (
     <Card className="rounded-3xl border p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -241,6 +205,11 @@ export function OportunidadeItensGrid({
             <Badge variant="secondary" className="rounded-full">
               {computed.isPart ? "Saldo: Participantes" : "Saldo: Carona"}
             </Badge>
+            {disabled && (
+              <Badge variant="outline" className="rounded-full">
+                Edição bloqueada (status encerrado)
+              </Badge>
+            )}
             {!cliente && (
               <Badge variant="outline" className="rounded-full">
                 Selecione o cliente para liberar validação
@@ -254,18 +223,6 @@ export function OportunidadeItensGrid({
           Adicionar item
         </Button>
       </div>
-
-      {!arp && (
-        <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Selecione uma ATA para carregar lotes e itens.
-        </div>
-      )}
-
-      {arp && lotes.length === 0 && (
-        <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Esta ATA não possui lotes/itens cadastrados.
-        </div>
-      )}
 
       <div className="mt-4 overflow-hidden rounded-2xl border">
         <Table>
@@ -284,14 +241,16 @@ export function OportunidadeItensGrid({
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                  Nenhum item ainda. Clique em “Adicionar item” ou lance via Kit.
+                  Nenhum item ainda.
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((r) => {
                 const lote = lotesById[r.loteId];
                 const tipo = lote?.tipoFornecimento;
-                const itemOptions = (lote?.itens ?? []).slice().sort((a, b) => a.numeroItem.localeCompare(b.numeroItem, undefined, { numeric: true }));
+                const itemOptions = (lote?.itens ?? [])
+                  .slice()
+                  .sort((a, b) => a.numeroItem.localeCompare(b.numeroItem, undefined, { numeric: true }));
                 const item = itensById[r.arpItemId];
 
                 const unit = lote && item ? computeValorUnitario(item, lote.tipoFornecimento) : 0;
@@ -346,10 +305,11 @@ export function OportunidadeItensGrid({
                     <TableCell className="text-right">
                       <div className="flex flex-col items-end gap-1">
                         <Input
-                          value={r.quantidade}
-                          onChange={(e) => patchRow(r.id, { quantidade: Math.max(1, Number(e.target.value || 1)) })}
+                          value={String(r.quantidade ?? "")}
+                          onChange={(e) => patchRow(r.id, { quantidade: Number(e.target.value) })}
                           type="number"
                           min={1}
+                          inputMode="numeric"
                           className={`h-10 w-[110px] rounded-2xl text-right tabular-nums ${isErr ? "border-rose-300 focus-visible:ring-rose-300" : ""}`}
                           disabled={!canEdit}
                         />
@@ -397,21 +357,6 @@ export function OportunidadeItensGrid({
           </TableBody>
         </Table>
       </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <MiniStat label="Itens" value={String(rows.length)} />
-        <MiniStat label="Erros" value={String(rows.filter((r) => r.error).length)} tone={rows.some((r) => r.error) ? "bg-rose-50 border-rose-200" : undefined} />
-        <MiniStat label="Total linhas" value={moneyBRL(round2(linhasCalc.reduce((s, r) => s + r.valorTotalLinha, 0)))} />
-      </div>
     </Card>
-  );
-}
-
-function MiniStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className={`rounded-2xl border bg-muted/20 px-4 py-3 ${tone ?? ""}`}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
-    </div>
   );
 }

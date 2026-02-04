@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { useArpStore } from "@/store/arp-store";
-import { ArrowLeft, Save, XCircle } from "lucide-react";
+import { ArrowLeft, Lock, Save, XCircle } from "lucide-react";
 import { OportunidadeHeaderForm, type OportunidadeHeaderDraft } from "@/components/oportunidades/OportunidadeHeaderForm";
 import { NovoClienteDialog } from "@/components/oportunidades/NovoClienteDialog";
 import { OportunidadeItensGrid, type GridRow } from "@/components/oportunidades/OportunidadeItensGrid";
@@ -38,12 +38,6 @@ export default function OportunidadeDetalhePage() {
   const arpId = isNova ? arpIdFromQuery : existing?.arpId ?? "";
 
   const arp = React.useMemo(() => state.arps.find((a) => a.id === arpId), [arpId, state.arps]);
-  const clientes = state.clientes;
-  const cliente = React.useMemo(() => {
-    const clienteId = isNova ? "" : existing?.clienteId;
-    if (!clienteId) return undefined;
-    return state.clientes.find((c) => c.id === clienteId);
-  }, [existing?.clienteId, isNova, state.clientes]);
 
   // draft state (local)
   const [draft, setDraft] = React.useState<OportunidadeHeaderDraft | null>(null);
@@ -54,7 +48,6 @@ export default function OportunidadeDetalhePage() {
   const [openNovoCliente, setOpenNovoCliente] = React.useState(false);
 
   React.useEffect(() => {
-    // inicializa draft
     if (!arpId) return;
 
     if (!isNova && existing) {
@@ -130,6 +123,8 @@ export default function OportunidadeDetalhePage() {
 
   const missingAta = !arpId;
 
+  const isLocked = Boolean(draft && draft.status !== "ABERTA");
+
   const dirty = React.useMemo(() => {
     if (!draft) return false;
     return hasDiff({ draft, rows }, savedSnapshot);
@@ -187,7 +182,7 @@ export default function OportunidadeDetalhePage() {
   }
 
   function onCancel() {
-    if (dirty) {
+    if (dirty && !isLocked) {
       const ok = confirm("Existem alterações não salvas. Deseja sair mesmo assim?");
       if (!ok) return;
     }
@@ -195,6 +190,11 @@ export default function OportunidadeDetalhePage() {
   }
 
   function onSave() {
+    if (isLocked) {
+      toast({ title: "Edição bloqueada", description: "Oportunidades em GANHAMOS/PERDEMOS são apenas demonstrativas." });
+      return;
+    }
+
     const v = validateAll();
     if (!v.ok) {
       toast({ title: "Validação", description: (v as any).message, variant: "destructive" });
@@ -234,12 +234,13 @@ export default function OportunidadeDetalhePage() {
   }
 
   function injectKit(items: Array<{ loteId: string; arpItemId: string; quantidade: number }>, kitNome: string) {
+    if (isLocked) return;
+
     if (!arp) {
       toast({ title: "ATA inválida", variant: "destructive" });
       return;
     }
 
-    // valida se itens existem na ATA
     const lotesById = Object.fromEntries(arp.lotes.map((l) => [l.id, l]));
     const notFound: string[] = [];
 
@@ -258,7 +259,6 @@ export default function OportunidadeDetalhePage() {
       return;
     }
 
-    // A2: mescla por loteId+arpItemId somando quantidade
     const byKey = new Map<string, GridRow>();
     for (const r of rows) byKey.set(`${r.loteId}:${r.arpItemId}`, r);
 
@@ -272,7 +272,7 @@ export default function OportunidadeDetalhePage() {
         if (idx >= 0) {
           next[idx] = {
             ...next[idx],
-            quantidade: Math.max(1, Number(next[idx].quantidade || 0) + (Number(it.quantidade) || 0)),
+            quantidade: (Number(next[idx].quantidade) || 0) + (Number(it.quantidade) || 0),
           };
         }
       } else {
@@ -280,7 +280,7 @@ export default function OportunidadeDetalhePage() {
           id: uid("oppi"),
           loteId: it.loteId,
           arpItemId: it.arpItemId,
-          quantidade: Math.max(1, Number(it.quantidade) || 1),
+          quantidade: Number(it.quantidade) || 0,
         });
       }
     }
@@ -324,14 +324,29 @@ export default function OportunidadeDetalhePage() {
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button variant="secondary" className="rounded-2xl" onClick={onCancel}>
               <XCircle className="mr-2 size-4" />
-              Cancelar
+              {isLocked ? "Voltar" : "Cancelar"}
             </Button>
-            <Button className="rounded-2xl" onClick={onSave}>
-              <Save className="mr-2 size-4" />
-              Salvar
+            <Button className="rounded-2xl" onClick={onSave} disabled={isLocked}>
+              {isLocked ? <Lock className="mr-2 size-4" /> : <Save className="mr-2 size-4" />}
+              {isLocked ? "Bloqueado" : "Salvar"}
             </Button>
           </div>
         </div>
+
+        {isLocked && (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <div className="flex items-start gap-2">
+              <Lock className="mt-0.5 size-4" />
+              <div>
+                <div className="font-semibold">Edição bloqueada</div>
+                <div className="mt-1 text-amber-900/80">
+                  Como o status está em <span className="font-semibold">{draft.status}</span>, a oportunidade fica apenas
+                  para demonstrativo.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <OportunidadeHeaderForm
           draft={draft}
@@ -339,6 +354,7 @@ export default function OportunidadeDetalhePage() {
           clientes={state.clientes}
           onChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
           onNewCliente={() => setOpenNovoCliente(true)}
+          readOnly={isLocked}
         />
 
         <AddKitSection
@@ -346,6 +362,7 @@ export default function OportunidadeDetalhePage() {
           kitItems={state.kitItems}
           allowedKitIds={allowedKitIds}
           onAddKitItems={injectKit}
+          disabled={isLocked}
         />
 
         <OportunidadeItensGrid
@@ -355,6 +372,7 @@ export default function OportunidadeDetalhePage() {
           rows={rows}
           onRows={setRows}
           oportunidadesAll={state.oportunidades}
+          disabled={isLocked}
         />
 
         <OportunidadeTotais arp={arp} linhas={linhasCalc} />
@@ -363,11 +381,12 @@ export default function OportunidadeDetalhePage() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" className="rounded-2xl" onClick={onCancel}>
-            Cancelar
+            <XCircle className="mr-2 size-4" />
+            {isLocked ? "Voltar" : "Cancelar"}
           </Button>
-          <Button className="rounded-2xl" onClick={onSave}>
-            <Save className="mr-2 size-4" />
-            Salvar oportunidade
+          <Button className="rounded-2xl" onClick={onSave} disabled={isLocked}>
+            {isLocked ? <Lock className="mr-2 size-4" /> : <Save className="mr-2 size-4" />}
+            {isLocked ? "Bloqueado" : "Salvar oportunidade"}
           </Button>
         </div>
       </div>
