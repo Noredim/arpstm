@@ -24,9 +24,9 @@ import {
 } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
 import type { ArpItem, ArpItemFornecimento, ArpItemManutencao, ArpLote, KitItem, TipoFornecimento } from "@/lib/arp-types";
-import { dateTimeBR, getNomeComercial, moneyBRL, round2, uid } from "@/lib/arp-utils";
+import { dateTimeBR, getNomeComercial, moneyBRL, round2 } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { ArrowLeft, Boxes, CalendarClock, HardHat, Package, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Boxes, CalendarClock, HardHat, Package, Plus, Trash2, Save, XCircle } from "lucide-react";
 
 const TIPO_META: Record<TipoFornecimento, { label: string; icon: React.ElementType; tone: string }> = {
   FORNECIMENTO: { label: "Fornecimento", icon: Package, tone: "bg-indigo-600 text-white" },
@@ -84,6 +84,12 @@ export default function KitDetalhePage() {
     return Object.fromEntries(entries);
   }, [lotes]);
 
+  const [localRows, setLocalRows] = React.useState<KitItem[]>([]);
+
+  React.useEffect(() => {
+    setLocalRows(kitItems);
+  }, [kitItems]);
+
   const totals = React.useMemo(() => {
     const acc = {
       fornecimento: 0,
@@ -95,7 +101,7 @@ export default function KitDetalhePage() {
       comodatoAnual: 0,
     };
 
-    for (const row of kitItems) {
+    for (const row of localRows) {
       const lote = lotesById[row.loteId];
       const item = itensById[row.arpItemId];
       if (!lote || !item) continue;
@@ -130,7 +136,7 @@ export default function KitDetalhePage() {
     const totalGeral = totalVista + acc.manutAnual + acc.comodatoAnual; // anualiza recorrências
 
     return { ...acc, totalVista, totalGeral };
-  }, [itensById, kitItems, lotesById]);
+  }, [itensById, localRows, lotesById]);
 
   if (!kit) {
     return (
@@ -172,19 +178,33 @@ export default function KitDetalhePage() {
       return;
     }
 
-    addKitItem(kit.id, {
+    const created = addKitItem(kit.id, {
       loteId: firstLote.id,
       arpItemId: firstItem.id,
       quantidade: 1,
     });
+    setLocalRows((rows) => [...rows, created]);
   }
 
   function updateRow(row: KitItem, patch: Partial<Omit<KitItem, "id" | "kitId">>) {
     updateKitItem(kit.id, row.id, patch);
+    setLocalRows((rows) =>
+      rows.map((r) => (r.id === row.id ? { ...r, ...patch } as KitItem : r)),
+    );
   }
 
   function removeRow(rowId: string) {
     deleteKitItem(kit.id, rowId);
+    setLocalRows((rows) => rows.filter((r) => r.id !== rowId));
+  }
+
+  function onSaveKit() {
+    toast({ title: "Kit salvo", description: kit.nomeKit || undefined });
+  }
+
+  function onCancelKit() {
+    setLocalRows(kitItems);
+    toast({ title: "Alterações desfeitas" });
   }
 
   return (
@@ -194,7 +214,10 @@ export default function KitDetalhePage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" className="rounded-2xl" onClick={() => navigate("/kits")}
+                <Button
+                  variant="secondary"
+                  className="rounded-2xl"
+                  onClick={() => navigate("/kits")}
                 >
                   <ArrowLeft className="mr-2 size-4" />
                   Kits
@@ -222,8 +245,22 @@ export default function KitDetalhePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button className="rounded-2xl" onClick={addRow} disabled={lotes.length === 0}>
+            <div className="flex flex-col gap-2 md:items-end">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="rounded-2xl"
+                  onClick={onCancelKit}
+                >
+                  <XCircle className="mr-2 size-4" />
+                  Cancelar
+                </Button>
+                <Button className="rounded-2xl" onClick={onSaveKit}>
+                  <Save className="mr-2 size-4" />
+                  Salvar
+                </Button>
+              </div>
+              <Button className="mt-2 rounded-2xl" onClick={addRow} disabled={lotes.length === 0}>
                 <Plus className="mr-2 size-4" />
                 Adicionar item
               </Button>
@@ -263,14 +300,14 @@ export default function KitDetalhePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {kitItems.length === 0 ? (
+                    {localRows.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
                           Adicione um item para começar.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      kitItems.map((row) => {
+                      localRows.map((row) => {
                         const lote = lotesById[row.loteId];
                         const item = itensById[row.arpItemId];
                         const qtd = Number(row.quantidade) || 0;
@@ -325,9 +362,12 @@ export default function KitDetalhePage() {
                             <TableCell>
                               <Input
                                 value={row.quantidade}
-                                onChange={(e) => updateRow(row, { quantidade: Math.max(1, Number(e.target.value || 1)) })}
+                                onChange={(e) =>
+                                  updateRow(row, {
+                                    quantidade: Number(e.target.value || 0),
+                                  })
+                                }
                                 type="number"
-                                min={1}
                                 className="h-10 rounded-2xl"
                               />
                             </TableCell>

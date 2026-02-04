@@ -23,7 +23,7 @@ export default function OportunidadeDetalhePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const params = useParams();
-  const { state, createOportunidadeDraft, saveOportunidade, createKit } = useArpStore();
+  const { state, createOportunidadeDraft, saveOportunidade } = useArpStore();
 
   const id = params.id;
   const isNova = !id || id === "nova";
@@ -102,10 +102,6 @@ export default function OportunidadeDetalhePage() {
 
   const missingAta = !arpId;
 
-  // Regra de bloqueio:
-  // - Se é uma oportunidade já existente e foi salva com status diferente de ABERTA, bloqueia.
-  // - Para novas oportunidades, mesmo que o usuário selecione "GANHAMOS" no formulário,
-  //   a tela continua editável até salvar.
   const isLocked = React.useMemo(() => {
     if (!existing) return false;
     const status = (existing.status ?? "ABERTA").toUpperCase();
@@ -213,9 +209,6 @@ export default function OportunidadeDetalhePage() {
       toast({ title: "Oportunidade salva", description: `Código #${saved.codigo}` });
 
       setSavedSnapshot({ draft, rows });
-
-      // Se foi salva já como GANHAMOS ou PERDEMOS, após este save a tela passará a ficar bloqueada
-      // pois "existing" será recarregado com status fechado da próxima vez que entrar.
       navigate("/oportunidades");
     } catch (err: any) {
       toast({
@@ -355,15 +348,6 @@ export default function OportunidadeDetalhePage() {
           onAddKitItems={injectKit}
           disabled={isLocked}
           onEditKits={() => navigate("/kits")}
-          onNewKit={() => {
-            if (!arpId) {
-              toast({ title: "Selecione uma ATA", variant: "destructive" });
-              return;
-            }
-            const kit = createKit({ nomeKit: "Novo Kit", ataId: arpId });
-            toast({ title: "Kit criado", description: "Abra o detalhe para editar os itens." });
-            navigate(`/kits/${kit.id}`);
-          }}
         />
 
         <OportunidadeItensGrid

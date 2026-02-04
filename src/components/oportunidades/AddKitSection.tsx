@@ -17,7 +17,6 @@ export function AddKitSection({
   onAddKitItems,
   disabled,
   onEditKits,
-  onNewKit,
 }: {
   kits: Kit[];
   kitItems: KitItem[];
@@ -25,7 +24,6 @@ export function AddKitSection({
   onAddKitItems: (items: Array<{ loteId: string; arpItemId: string; quantidade: number }>, kitNome: string) => void;
   disabled?: boolean;
   onEditKits: () => void;
-  onNewKit: () => void;
 }) {
   const [kitId, setKitId] = React.useState<string>("");
 
@@ -91,7 +89,7 @@ export function AddKitSection({
             <div>
               <div className="text-sm font-semibold tracking-tight">Kits</div>
               <div className="text-sm text-muted-foreground">
-                Selecione um kit para lançar seus itens na grid (com confirmação antes de aplicar).
+                Selecione um kit já cadastrado para lançar seus itens na grid (com confirmação antes de aplicar).
               </div>
             </div>
           </div>
@@ -106,10 +104,6 @@ export function AddKitSection({
             >
               <ExternalLink className="mr-2 size-4" />
               Editar Kits
-            </Button>
-            <Button className="rounded-2xl" onClick={onNewKit} type="button" disabled={Boolean(disabled)}>
-              <Plus className="mr-2 size-4" />
-              Novo Kit
             </Button>
           </div>
         </div>

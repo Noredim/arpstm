@@ -166,7 +166,7 @@ export default function KitsPage() {
                         <div className="inline-flex items-center gap-1">
                           <Button asChild variant="secondary" size="sm" className="rounded-xl">
                             <Link to={`/kits/${k.id}`}>
-                              Abrir <ArrowRight className="ml-2 size-4" />
+                              Editar <ArrowRight className="ml-2 size-4" />
                             </Link>
                           </Button>
                           <Button
