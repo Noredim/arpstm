@@ -4,14 +4,7 @@ import { ClienteFormSheet } from "@/components/clientes/ClienteFormSheet";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useArpStore } from "@/store/arp-store";
 import { formatCnpj } from "@/lib/arp-utils";
 import { toast } from "@/hooks/use-toast";
@@ -161,6 +154,8 @@ export default function ClientesPage() {
         initial={editing}
         onSubmit={onSubmit}
         cnpjTaken={cnpjTaken}
+        cidades={state.cidades}
+        estados={state.estados}
       />
     </AppLayout>
   );

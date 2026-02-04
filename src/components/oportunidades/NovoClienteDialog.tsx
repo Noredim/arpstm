@@ -32,6 +32,8 @@ export function NovoClienteDialog({
       onOpenChange={onOpenChange}
       onSubmit={onSubmit}
       cnpjTaken={cnpjTaken}
+      cidades={state.cidades}
+      estados={state.estados}
     />
   );
 }

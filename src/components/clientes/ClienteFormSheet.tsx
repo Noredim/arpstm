@@ -3,14 +3,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { Cliente, Esfera } from "@/lib/arp-types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Cidade, Cliente, Esfera, Estado } from "@/lib/arp-types";
 import { digitsOnly, formatCnpj } from "@/lib/arp-utils";
 
 type Props = {
@@ -19,6 +13,8 @@ type Props = {
   initial?: Cliente;
   cnpjTaken?: (cnpjDigits: string) => boolean;
   onSubmit: (data: Omit<Cliente, "id">) => void;
+  cidades: Cidade[];
+  estados: Estado[];
 };
 
 const ESFERAS: { value: Esfera; label: string }[] = [
@@ -27,12 +23,53 @@ const ESFERAS: { value: Esfera; label: string }[] = [
   { value: "FEDERAL", label: "Federal" },
 ];
 
-export function ClienteFormSheet({ open, onOpenChange, initial, onSubmit, cnpjTaken }: Props) {
+function cidadeLabel(c: Cidade, estadosById: Record<string, Estado | undefined>) {
+  const uf = estadosById[c.estadoId];
+  const sigla = uf?.sigla ? ` (${uf.sigla})` : "";
+  return `${c.nome}${sigla}`;
+}
+
+export function ClienteFormSheet({
+  open,
+  onOpenChange,
+  initial,
+  onSubmit,
+  cnpjTaken,
+  cidades,
+  estados,
+}: Props) {
   const [nome, setNome] = React.useState("");
   const [cnpj, setCnpj] = React.useState("");
   const [cidade, setCidade] = React.useState("");
   const [esfera, setEsfera] = React.useState<Esfera>("MUNICIPAL");
   const [error, setError] = React.useState<string | null>(null);
+
+  const estadosById = React.useMemo(
+    () => Object.fromEntries(estados.map((e) => [e.id, e])),
+    [estados],
+  );
+
+  const cidadesAtivas = React.useMemo(() => cidades.filter((c) => c.ativo), [cidades]);
+
+  const cidadeOptions = React.useMemo(() => {
+    const base = cidadesAtivas.slice().sort((a, b) => a.nome.localeCompare(b.nome));
+    // compat: se cliente antigo tiver cidade que não está no cadastro/ativo, mantém como opção
+    const currentNome = (cidade ?? "").trim();
+    if (!currentNome) return base;
+
+    const exists = base.some((c) => c.nome.trim().toLowerCase() === currentNome.toLowerCase());
+    if (exists) return base;
+
+    const fallback: Cidade = {
+      id: `legacy_${currentNome}`,
+      nome: currentNome,
+      estadoId: "",
+      ativo: true,
+      criadoEm: "",
+      atualizadoEm: "",
+    };
+    return [fallback, ...base];
+  }, [cidade, cidadesAtivas]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -47,7 +84,7 @@ export function ClienteFormSheet({ open, onOpenChange, initial, onSubmit, cnpjTa
     const cnpjDigits = digitsOnly(cnpj);
     if (!nome.trim()) return setError("Informe o nome do cliente.");
     if (cnpjDigits.length !== 14) return setError("Informe um CNPJ válido (14 dígitos).");
-    if (!cidade.trim()) return setError("Informe a cidade.");
+    if (!cidade.trim()) return setError("Selecione a cidade.");
     if (cnpjTaken?.(cnpjDigits)) return setError("Este CNPJ já está cadastrado.");
 
     onSubmit({ nome: nome.trim(), cnpj: cnpjDigits, cidade: cidade.trim(), esfera });
@@ -105,12 +142,21 @@ export function ClienteFormSheet({ open, onOpenChange, initial, onSubmit, cnpjTa
 
             <div className="space-y-1.5">
               <Label>Cidade</Label>
-              <Input
-                value={cidade}
-                onChange={(e) => setCidade(e.target.value)}
-                placeholder="Ex.: São Paulo"
-                className="h-11 rounded-2xl"
-              />
+              <Select value={cidade} onValueChange={setCidade}>
+                <SelectTrigger className="h-11 rounded-2xl">
+                  <SelectValue placeholder={cidadeOptions.length ? "Selecione a cidade" : "Cadastre cidades primeiro"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cidadeOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.nome}>
+                      {cidadeLabel(c, estadosById)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                A lista é baseada no cadastro de Cidades (apenas ativas).
+              </div>
             </div>
 
             {error && (
