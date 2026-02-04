@@ -39,19 +39,17 @@ export default function OportunidadeDetalhePage() {
 
   const arp = React.useMemo(() => state.arps.find((a) => a.id === arpId), [arpId, state.arps]);
 
-  // draft state (local)
   const [draft, setDraft] = React.useState<OportunidadeHeaderDraft | null>(null);
   const [rows, setRows] = React.useState<GridRow[]>([]);
   const [savedSnapshot, setSavedSnapshot] = React.useState<{ draft: any; rows: any } | null>(null);
 
-  // novo cliente modal
   const [openNovoCliente, setOpenNovoCliente] = React.useState(false);
 
   React.useEffect(() => {
     if (!arpId) return;
 
     if (!isNova && existing) {
-      setDraft({
+      const baseDraft: OportunidadeHeaderDraft = {
         id: existing.id,
         codigo: existing.codigo,
         arpId: existing.arpId,
@@ -62,43 +60,23 @@ export default function OportunidadeDetalhePage() {
         temperatura: existing.temperatura ?? "MORNA",
         dataAbertura: existing.dataAbertura ?? "",
         prazoFechamento: existing.prazoFechamento ?? "",
-      });
-
-      setRows(
-        (existing.itens ?? []).map((i) => ({
-          id: i.id,
-          loteId: i.loteId,
-          arpItemId: i.arpItemId,
-          quantidade: Number(i.quantidade) || 1,
-        })),
-      );
-
-      const snap = {
-        draft: {
-          id: existing.id,
-          codigo: existing.codigo,
-          arpId: existing.arpId,
-          titulo: existing.titulo ?? "",
-          clienteId: existing.clienteId ?? "",
-          status: existing.status ?? "ABERTA",
-          descricao: existing.descricao ?? "",
-          temperatura: existing.temperatura ?? "MORNA",
-          dataAbertura: existing.dataAbertura ?? "",
-          prazoFechamento: existing.prazoFechamento ?? "",
-        },
-        rows: (existing.itens ?? []).map((i) => ({
-          id: i.id,
-          loteId: i.loteId,
-          arpItemId: i.arpItemId,
-          quantidade: Number(i.quantidade) || 1,
-        })),
       };
-      setSavedSnapshot(snap);
+
+      const baseRows: GridRow[] = (existing.itens ?? []).map((i) => ({
+        id: i.id,
+        loteId: i.loteId,
+        arpItemId: i.arpItemId,
+        quantidade: Number(i.quantidade) || 1,
+      }));
+
+      setDraft(baseDraft);
+      setRows(baseRows);
+      setSavedSnapshot({ draft: baseDraft, rows: baseRows });
     }
 
     if (isNova) {
       const d = createOportunidadeDraft({ arpId });
-      setDraft({
+      const baseDraft: OportunidadeHeaderDraft = {
         id: d.id,
         codigo: undefined,
         arpId: d.arpId,
@@ -109,7 +87,8 @@ export default function OportunidadeDetalhePage() {
         temperatura: d.temperatura ?? "MORNA",
         dataAbertura: d.dataAbertura,
         prazoFechamento: d.prazoFechamento,
-      });
+      };
+      setDraft(baseDraft);
       setRows([]);
       setSavedSnapshot({ draft: null, rows: [] });
     }
@@ -123,7 +102,15 @@ export default function OportunidadeDetalhePage() {
 
   const missingAta = !arpId;
 
-  const isLocked = Boolean(draft && draft.status !== "ABERTA");
+  // Regra de bloqueio:
+  // - Se é uma oportunidade já existente e foi salva com status diferente de ABERTA, bloqueia.
+  // - Para novas oportunidades, mesmo que o usuário selecione "GANHAMOS" no formulário,
+  //   a tela continua editável até salvar.
+  const isLocked = React.useMemo(() => {
+    if (!existing) return false;
+    const status = (existing.status ?? "ABERTA").toUpperCase();
+    return status !== "ABERTA";
+  }, [existing]);
 
   const dirty = React.useMemo(() => {
     if (!draft) return false;
@@ -190,11 +177,6 @@ export default function OportunidadeDetalhePage() {
   }
 
   function onSave() {
-    if (isLocked) {
-      toast({ title: "Edição bloqueada", description: "Oportunidades em GANHAMOS/PERDEMOS são apenas demonstrativas." });
-      return;
-    }
-
     const v = validateAll();
     if (!v.ok) {
       toast({ title: "Validação", description: (v as any).message, variant: "destructive" });
@@ -222,20 +204,29 @@ export default function OportunidadeDetalhePage() {
       clienteId: draft.clienteId,
       status: draft.status,
       itens,
-      kits: [],
-      kitItens: [],
+      kits: existing?.kits ?? [],
+      kitItens: existing?.kitItens ?? [],
     };
 
-    const saved = saveOportunidade({ draft: opp as any });
-    toast({ title: "Oportunidade salva", description: `Código #${saved.codigo}` });
+    try {
+      const saved = saveOportunidade({ draft: opp as any });
+      toast({ title: "Oportunidade salva", description: `Código #${saved.codigo}` });
 
-    setSavedSnapshot({ draft, rows });
-    navigate("/oportunidades");
+      setSavedSnapshot({ draft, rows });
+
+      // Se foi salva já como GANHAMOS ou PERDEMOS, após este save a tela passará a ficar bloqueada
+      // pois "existing" será recarregado com status fechado da próxima vez que entrar.
+      navigate("/oportunidades");
+    } catch (err: any) {
+      toast({
+        title: "Erro ao salvar oportunidade",
+        description: String(err?.message ?? err),
+        variant: "destructive",
+      });
+    }
   }
 
   function injectKit(items: Array<{ loteId: string; arpItemId: string; quantidade: number }>, kitNome: string) {
-    if (isLocked) return;
-
     if (!arp) {
       toast({ title: "ATA inválida", variant: "destructive" });
       return;
@@ -326,9 +317,9 @@ export default function OportunidadeDetalhePage() {
               <XCircle className="mr-2 size-4" />
               {isLocked ? "Voltar" : "Cancelar"}
             </Button>
-            <Button className="rounded-2xl" onClick={onSave} disabled={isLocked}>
+            <Button className="rounded-2xl" onClick={onSave}>
               {isLocked ? <Lock className="mr-2 size-4" /> : <Save className="mr-2 size-4" />}
-              {isLocked ? "Bloqueado" : "Salvar"}
+              {isLocked ? "Salvar bloqueado" : "Salvar"}
             </Button>
           </div>
         </div>
@@ -340,7 +331,7 @@ export default function OportunidadeDetalhePage() {
               <div>
                 <div className="font-semibold">Edição bloqueada</div>
                 <div className="mt-1 text-amber-900/80">
-                  Como o status está em <span className="font-semibold">{draft.status}</span>, a oportunidade fica apenas
+                  Como o status está em <span className="font-semibold">{existing?.status}</span>, a oportunidade fica apenas
                   para demonstrativo.
                 </div>
               </div>
@@ -365,7 +356,6 @@ export default function OportunidadeDetalhePage() {
           disabled={isLocked}
           onEditKits={() => navigate("/kits")}
           onNewKit={() => {
-            if (isLocked) return;
             if (!arpId) {
               toast({ title: "Selecione uma ATA", variant: "destructive" });
               return;
@@ -395,9 +385,9 @@ export default function OportunidadeDetalhePage() {
             <XCircle className="mr-2 size-4" />
             {isLocked ? "Voltar" : "Cancelar"}
           </Button>
-          <Button className="rounded-2xl" onClick={onSave} disabled={isLocked}>
+          <Button className="rounded-2xl" onClick={onSave}>
             {isLocked ? <Lock className="mr-2 size-4" /> : <Save className="mr-2 size-4" />}
-            {isLocked ? "Bloqueado" : "Salvar oportunidade"}
+            {isLocked ? "Salvar bloqueado" : "Salvar oportunidade"}
           </Button>
         </div>
       </div>
