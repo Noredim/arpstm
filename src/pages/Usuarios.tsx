@@ -16,17 +16,27 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
 import type { UserRole, Usuario } from "@/lib/arp-types";
-import { dateTimeBR, uid } from "@/lib/arp-utils";
+import { dateTimeBR } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
-import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useSession } from "@/components/auth/SessionProvider";
-import { SetUserPasswordDialog } from "@/components/users/SetUserPasswordDialog";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -43,12 +53,17 @@ function roleBadge(r: UserRole) {
 }
 
 function statusBadge(ativo: boolean) {
-  return ativo ? <Badge className="rounded-full bg-emerald-600 text-white">ativo</Badge> : <Badge variant="secondary" className="rounded-full">inativo</Badge>;
+  return ativo ? (
+    <Badge className="rounded-full bg-emerald-600 text-white">ativo</Badge>
+  ) : (
+    <Badge variant="secondary" className="rounded-full">
+      inativo
+    </Badge>
+  );
 }
 
 export default function UsuariosPage() {
   const { state, getCurrentUser, createUsuario, updateUsuario, deleteUsuario, setCurrentUserEmail } = useArpStore();
-  const { session } = useSession();
 
   const me = getCurrentUser();
   const isAdmin = me.role === "ADMIN";
@@ -60,9 +75,6 @@ export default function UsuariosPage() {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<UserRole>("COMERCIAL");
   const [ativo, setAtivo] = React.useState(true);
-
-  const [openSetPw, setOpenSetPw] = React.useState(false);
-  const [pwTarget, setPwTarget] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -88,7 +100,8 @@ export default function UsuariosPage() {
     if (!v) e.push("Informe o e-mail.");
     if (v && !v.includes("@")) e.push("E-mail inválido.");
     if (!editing && v && state.usuarios.some((u) => u.email.toLowerCase() === v)) e.push("E-mail já cadastrado.");
-    if (editing && v && state.usuarios.some((u) => u.id !== editing.id && u.email.toLowerCase() === v)) e.push("E-mail já cadastrado.");
+    if (editing && v && state.usuarios.some((u) => u.id !== editing.id && u.email.toLowerCase() === v))
+      e.push("E-mail já cadastrado.");
 
     const isMaster = (editing?.email ?? "").toLowerCase() === MASTER_EMAIL.toLowerCase();
     if (isMaster) {
@@ -100,43 +113,20 @@ export default function UsuariosPage() {
     return e;
   }, [ativo, email, editing, role, state.usuarios]);
 
-  async function ensureAuthUserExists(targetEmail: string) {
-    // O app não tem como criar usuário no Auth sem privilégio; então orientamos:
-    // - Usuário deve se cadastrar em /login (Sign Up habilitado)
-    // - Depois o Admin ajusta role/ativo aqui e define a senha (se desejar).
-    const lower = targetEmail.trim().toLowerCase();
-    if (!lower) return;
-    toast({
-      title: "Atenção",
-      description:
-        "Para o usuário conseguir entrar, ele precisa existir no Supabase Auth. Se ele ainda não existir, peça para ele criar a conta na tela de Login (Sign Up). Depois você pode definir a senha aqui.",
-      variant: "destructive",
-    });
-  }
-
   function submit() {
     try {
-      const v = email.trim().toLowerCase();
       if (editing) {
-        updateUsuario(editing.id, { email: v, role, ativo });
+        updateUsuario(editing.id, { email: email.trim().toLowerCase(), role, ativo });
         toast({ title: "Usuário atualizado" });
       } else {
-        const created = createUsuario({ email: v, role, ativo });
+        createUsuario({ email: email.trim().toLowerCase(), role, ativo });
         toast({ title: "Usuário criado" });
-
-        // best-effort: alerta sobre Supabase Auth
-        void ensureAuthUserExists(created.email);
       }
       setOpen(false);
       setEditing(null);
     } catch (err: any) {
       toast({ title: "Erro", description: String(err?.message ?? err), variant: "destructive" });
     }
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    toast({ title: "Sessão encerrada" });
   }
 
   return (
@@ -147,34 +137,23 @@ export default function UsuariosPage() {
             <div>
               <div className="text-lg font-semibold tracking-tight">Usuários</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                Perfis: Admin, Gestor e Comercial. O usuário master não pode ser excluído.
+                RBAC: Admin, Gestor e Comercial. O usuário master não pode ser excluído.
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                variant="secondary"
-                className="rounded-2xl"
-                onClick={signOut}
-                disabled={!session}
-              >
-                Sair
-              </Button>
-              <Button
-                className="rounded-2xl"
-                onClick={() => {
-                  setEditing(null);
-                  setOpen(true);
-                }}
-              >
-                <Plus className="mr-2 size-4" />
-                Novo usuário
-              </Button>
-            </div>
+            <Button
+              className="rounded-2xl"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="mr-2 size-4" />
+              Novo usuário
+            </Button>
           </div>
 
           <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-            Usuário atual (permissões no app): <span className="font-medium text-foreground">{me.email}</span> •{" "}
-            {roleLabel(me.role)}
+            Usuário atual: <span className="font-medium text-foreground">{me.email}</span> • {roleLabel(me.role)}
           </div>
         </Card>
 
@@ -187,7 +166,7 @@ export default function UsuariosPage() {
                   <TableHead className="w-[140px]">Perfil</TableHead>
                   <TableHead className="w-[130px]">Status</TableHead>
                   <TableHead className="w-[200px]">Atualizado em</TableHead>
-                  <TableHead className="w-[340px] text-right">Ações</TableHead>
+                  <TableHead className="w-[260px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -201,8 +180,14 @@ export default function UsuariosPage() {
                       <TableRow key={u.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
                           {u.email}
-                          {isMaster && <Badge className="ml-2 rounded-full bg-indigo-600 text-white">master</Badge>}
-                          {isCurrent && <Badge variant="secondary" className="ml-2 rounded-full">atual</Badge>}
+                          {isMaster && (
+                            <Badge className="ml-2 rounded-full bg-indigo-600 text-white">master</Badge>
+                          )}
+                          {isCurrent && (
+                            <Badge variant="secondary" className="ml-2 rounded-full">
+                              atual
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>{roleBadge(u.role)}</TableCell>
                         <TableCell>{statusBadge(u.ativo)}</TableCell>
@@ -223,25 +208,12 @@ export default function UsuariosPage() {
                             </Button>
 
                             <Button
-                              variant="secondary"
-                              size="sm"
-                              className="rounded-xl"
-                              onClick={() => {
-                                setPwTarget(u.email);
-                                setOpenSetPw(true);
-                              }}
-                            >
-                              <KeyRound className="mr-2 size-4" />
-                              Definir senha
-                            </Button>
-
-                            <Button
                               variant="ghost"
                               size="sm"
                               className="rounded-xl"
                               onClick={() => {
                                 setCurrentUserEmail(u.email);
-                                toast({ title: "Usuário atual (app) alterado", description: u.email });
+                                toast({ title: "Usuário atual alterado", description: u.email });
                               }}
                             >
                               Usar
@@ -264,10 +236,6 @@ export default function UsuariosPage() {
               </TableBody>
             </Table>
           </div>
-
-          <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-            Dica: “Definir senha” atualiza a senha no Supabase Auth (política forte aplicada).
-          </div>
         </Card>
       </div>
 
@@ -285,7 +253,6 @@ export default function UsuariosPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11 rounded-2xl"
                 placeholder="nome@empresa.com"
-                disabled={Boolean(editing && editing.email.toLowerCase() === MASTER_EMAIL.toLowerCase())}
               />
             </div>
 
@@ -322,10 +289,6 @@ export default function UsuariosPage() {
                 </ul>
               </div>
             )}
-
-            <div className="rounded-2xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-              Importante: este cadastro define permissões no app. O login é pelo Supabase Auth (tela de Login).
-            </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button
@@ -372,8 +335,6 @@ export default function UsuariosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <SetUserPasswordDialog open={openSetPw} onOpenChange={setOpenSetPw} targetEmail={pwTarget} />
     </AppLayout>
   );
 }
