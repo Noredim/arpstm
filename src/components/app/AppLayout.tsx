@@ -172,12 +172,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                             <span>{item.label}</span>
                           </NavLink>
                         </SidebarMenuButton>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           )}
 
           {canSeeAdmin && (
