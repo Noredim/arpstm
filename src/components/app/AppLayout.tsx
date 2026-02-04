@@ -19,7 +19,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, Factory, FileText, Handshake, Home, LogOut, Map, MapPin, Shield, Sparkles } from "lucide-react";
+import {
+  Boxes,
+  Building2,
+  Factory,
+  FileText,
+  Handshake,
+  Home,
+  LogOut,
+  Map,
+  MapPin,
+  Shield,
+  Sparkles,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/components/auth/SessionProvider";
 
@@ -117,8 +129,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                    </SidebarMenuItem>
-                  );
+                    );
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -163,9 +174,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                             <span>{item.label}</span>
                           </NavLink>
                         </SidebarMenuButton>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
+                      </SidebarMenuItem>
+                    );
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -177,9 +187,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between gap-2 rounded-xl bg-sidebar-accent/60 p-2">
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="text-xs font-medium">Sessão</div>
-              <div className="truncate text-[11px] text-sidebar-foreground/70">
-                {user?.email ?? "—"}
-              </div>
+              <div className="truncate text-[11px] text-sidebar-foreground/70">{user?.email ?? "—"}</div>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="rounded-full border border-sidebar-border bg-background/70">
