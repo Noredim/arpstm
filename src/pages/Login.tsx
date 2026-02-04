@@ -27,7 +27,7 @@ export default function LoginPage() {
             ARP • Atas • Oportunidades
           </div>
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-            Entre para acessar a plataforma de Gestão de ARP
+            Entre para acessar a plataforma de Gestão de Saldos de ARP - Stelmat
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
             Autenticação segura com Supabase. Após entrar, você volta automaticamente para o sistema.
@@ -35,9 +35,9 @@ export default function LoginPage() {
 
           <div className="overflow-hidden rounded-3xl border bg-muted/20">
             <img
-              src="/placeholder.svg"
-              alt="Sistema"
-              className="h-[220px] w-full object-cover md:h-[260px]"
+              src="/brand-stelmat.png"
+              alt="Stelmat"
+              className="h-[220px] w-full object-contain p-8 md:h-[260px]"
             />
           </div>
         </div>

@@ -8,6 +8,8 @@ export function BrandMark({
   className?: string;
   compact?: boolean;
 }) {
+  const [imgOk, setImgOk] = React.useState(true);
+
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div
@@ -15,12 +17,20 @@ export function BrandMark({
           "grid size-10 place-items-center rounded-2xl bg-white/70 ring-1 ring-sidebar-border overflow-hidden",
           compact && "size-9 rounded-xl",
         )}
+        aria-label="Stelmat"
       >
-        <img
-          src="/brand-stelmat.png"
-          alt="Stelmat"
-          className="h-full w-full object-contain p-1.5"
-        />
+        {imgOk ? (
+          <img
+            src="/brand-stelmat.png"
+            alt="Stelmat"
+            className="h-full w-full object-contain p-1.5"
+            onError={() => setImgOk(false)}
+          />
+        ) : (
+          <div className="text-[10px] font-semibold tracking-tight text-sidebar-foreground/80">
+            Stelmat
+          </div>
+        )}
       </div>
 
       {!compact && (
