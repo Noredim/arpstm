@@ -41,9 +41,9 @@ const Index = () => {
           <div className="relative">
             <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl border bg-muted">
               <img
-                src="/brand-stelmat.png"
+                src="/ARPSSTEL.png"
                 alt="Stelmat"
-                className="h-full w-full object-contain p-8 opacity-95"
+                className="h-full w-full object-contain p-6"
               />
             </div>
             <div className="pointer-events-none absolute -bottom-3 -left-3 hidden rounded-2xl border bg-background/80 p-3 shadow-sm backdrop-blur sm:block">

@@ -9,7 +9,7 @@ type Props = {
 export function AppLogo({ className, alt = "Stelmat" }: Props) {
   return (
     <img
-      src="/stel.svg"
+      src="/ARPSSTEL.png"
       alt={alt}
       className={cn("block h-full w-full object-contain", className)}
       draggable={false}
