@@ -17,6 +17,11 @@ import Oportunidades from "./pages/Oportunidades";
 import OportunidadeDetalhe from "./pages/OportunidadeDetalhe";
 import ControleSaldo from "./pages/ControleSaldo";
 import NotFound from "./pages/NotFound";
+import Login from "./pages/Login";
+import Configuracoes from "./pages/Configuracoes";
+import { SessionProvider } from "@/components/auth/SessionProvider";
+import { RequireAuth } from "@/components/auth/RequireAuth";
+import { AppSettingsProvider } from "@/store/app-settings-store";
 
 const queryClient = new QueryClient();
 
@@ -25,27 +30,133 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <ArpStoreProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/estados" element={<Estados />} />
-            <Route path="/cidades" element={<Cidades />} />
-            <Route path="/usuarios" element={<Usuarios />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/atas" element={<Atas />} />
-            <Route path="/atas/:id" element={<AtaDetalhe />} />
-            <Route path="/kits" element={<Kits />} />
-            <Route path="/kits/:id" element={<KitDetalhe />} />
-            <Route path="/oportunidades" element={<Oportunidades />} />
-            <Route path="/oportunidades/nova" element={<OportunidadeDetalhe />} />
-            <Route path="/oportunidades/:id" element={<OportunidadeDetalhe />} />
-            <Route path="/controle-saldo" element={<ControleSaldo />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </ArpStoreProvider>
+      <SessionProvider>
+        <AppSettingsProvider>
+          <ArpStoreProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+
+                <Route
+                  path="/"
+                  element={
+                    <RequireAuth>
+                      <Index />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/estados"
+                  element={
+                    <RequireAuth>
+                      <Estados />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/cidades"
+                  element={
+                    <RequireAuth>
+                      <Cidades />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/usuarios"
+                  element={
+                    <RequireAuth>
+                      <Usuarios />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/clientes"
+                  element={
+                    <RequireAuth>
+                      <Clientes />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/atas"
+                  element={
+                    <RequireAuth>
+                      <Atas />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/atas/:id"
+                  element={
+                    <RequireAuth>
+                      <AtaDetalhe />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/kits"
+                  element={
+                    <RequireAuth>
+                      <Kits />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/kits/:id"
+                  element={
+                    <RequireAuth>
+                      <KitDetalhe />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/oportunidades"
+                  element={
+                    <RequireAuth>
+                      <Oportunidades />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/oportunidades/nova"
+                  element={
+                    <RequireAuth>
+                      <OportunidadeDetalhe />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/oportunidades/:id"
+                  element={
+                    <RequireAuth>
+                      <OportunidadeDetalhe />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/controle-saldo"
+                  element={
+                    <RequireAuth>
+                      <ControleSaldo />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/configuracoes"
+                  element={
+                    <RequireAuth>
+                      <Configuracoes />
+                    </RequireAuth>
+                  }
+                />
+
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </ArpStoreProvider>
+        </AppSettingsProvider>
+      </SessionProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

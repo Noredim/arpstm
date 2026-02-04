@@ -18,9 +18,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Boxes, Building2, Factory, FileText, Handshake, Home, Map, MapPin, Shield, Sparkles } from "lucide-react";
+import { Boxes, Building2, Factory, FileText, Handshake, Home, Map, MapPin, Settings2, Shield } from "lucide-react";
 
 import { useArpStore } from "@/store/arp-store";
+import { useAppSettings } from "@/store/app-settings-store";
 
 const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
 
@@ -39,13 +40,17 @@ const navComercial = [
 
 const navUsuario = [{ to: "/usuarios", label: "Usuários", icon: Shield }] as const;
 
+const navAdmin = [{ to: "/configuracoes", label: "Configurações", icon: Settings2 }] as const;
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { getCurrentUser } = useArpStore();
+  const { settings } = useAppSettings();
   const me = getCurrentUser();
 
   const canSeeBasico = me.role === "ADMIN" || me.role === "GESTOR";
   const canSeeUsuario = me.role === "ADMIN";
+  const canSeeAdmin = me.role === "ADMIN";
 
   const pageTitle = React.useMemo(() => {
     const all = [
@@ -53,22 +58,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       ...(canSeeBasico ? navBasico : []),
       ...navComercial,
       ...(canSeeUsuario ? navUsuario : []),
+      ...(canSeeAdmin ? navAdmin : []),
     ];
     const current = all.find((n) => n.to !== "/" && location.pathname.startsWith(n.to));
-    if (location.pathname === "/") return "Gestão de ARP";
-    return current?.label ?? "Gestão de ARP";
-  }, [canSeeBasico, canSeeUsuario, location.pathname]);
+    if (location.pathname === "/") return settings.appName || "Gestão de ARP";
+    return current?.label ?? (settings.appName || "Gestão de ARP");
+  }, [canSeeBasico, canSeeUsuario, canSeeAdmin, location.pathname, settings.appName]);
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="inset" collapsible="icon" className="bg-sidebar">
         <SidebarHeader className="gap-2">
           <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <Sparkles className="size-5" />
+            <div className="grid size-10 place-items-center overflow-hidden rounded-2xl border bg-background shadow-sm">
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-cover" />
+              ) : (
+                <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
+                  <span className="text-sm font-semibold">A</span>
+                </div>
+              )}
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-semibold tracking-tight">ARP • Atas</div>
+              <div className="truncate text-sm font-semibold tracking-tight">{settings.appName || "Gestão de ARP"}</div>
               <div className="truncate text-xs text-sidebar-foreground/70">Controle de saldo e adesões</div>
             </div>
           </div>
@@ -150,6 +162,30 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SidebarGroupContent>
                 <SidebarMenu>
                   {navUsuario.map((item) => {
+                    const Icon = item.icon;
+                    const active = location.pathname.startsWith(item.to);
+                    return (
+                      <SidebarMenuItem key={item.to}>
+                        <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                          <NavLink to={item.to} className={({ isActive }) => cn(isActive ? "" : "")}>
+                            <Icon />
+                            <span>{item.label}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          )}
+
+          {canSeeAdmin && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Admin</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navAdmin.map((item) => {
                     const Icon = item.icon;
                     const active = location.pathname.startsWith(item.to);
                     return (
