@@ -29,6 +29,14 @@ function looksLikeRlsError(message: string) {
   return m.includes("row-level security") || m.includes("violates row-level security");
 }
 
+function formatSupabaseError(err: any) {
+  if (!err) return "Erro desconhecido";
+  const message = String(err.message ?? err.error ?? err);
+  const status = err.statusCode ?? err.status ?? "";
+  const details = err.details ?? err.error_description ?? "";
+  return [status ? `HTTP ${status}` : "", message, details].filter(Boolean).join(" • ");
+}
+
 export default function AppSettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -101,7 +109,18 @@ export default function AppSettingsPage() {
     };
   }, []);
 
+  async function assertBucketExists() {
+    const { data, error } = await supabase.storage.listBuckets();
+    if (error) throw error;
+    const exists = (data ?? []).some((b) => b.name === BUCKET);
+    if (!exists) {
+      throw new Error(`Bucket "${BUCKET}" não existe (crie em Storage no Supabase).`);
+    }
+  }
+
   async function uploadPngAndGetPublicUrl(png: File) {
+    await assertBucketExists();
+
     const cleanName = png.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
     const path = `branding/${Date.now()}_${cleanName}`;
 
@@ -144,11 +163,11 @@ export default function AppSettingsPage() {
         try {
           nextImageUrl = await uploadPngAndGetPublicUrl(file);
         } catch (err: any) {
-          const msg = String(err?.message ?? err);
+          const msg = formatSupabaseError(err);
           toast({
-            title: "Upload bloqueado",
+            title: "Falha no upload",
             description: looksLikeRlsError(msg)
-              ? 'O Storage está bloqueando o upload por RLS. Crie o bucket "app-assets" e aplique as policies de Storage do schema.sql.'
+              ? `Bloqueado por RLS/Policy no Storage. Detalhe: ${msg}`
               : msg,
             variant: "destructive",
           });
@@ -267,8 +286,8 @@ export default function AppSettingsPage() {
                   )}
 
                   <div className="mt-3 rounded-2xl border bg-background/70 px-4 py-3 text-xs text-muted-foreground">
-                    Se o upload falhar por permissão, aplique as policies de <span className="font-medium">Storage</span>{" "}
-                    em <span className="font-medium">src/integrations/supabase/schema.sql</span>.
+                    Se der erro no upload, confirme que o bucket <span className="font-medium">app-assets</span> existe e
+                    que as policies de Storage do <span className="font-medium">schema.sql</span> foram aplicadas.
                   </div>
                 </div>
               </div>
