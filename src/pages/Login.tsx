@@ -3,8 +3,22 @@ import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useSession } from "@/components/auth/SessionProvider";
 
 export default function LoginPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, loading } = useSession();
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+
+    const from = (location.state as any)?.from as string | undefined;
+    navigate(from && typeof from === "string" ? from : "/", { replace: true });
+  }, [loading, location.state, navigate, user]);
+
   return (
     <div className="min-h-[100svh] bg-background">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 md:grid-cols-2 md:items-center md:py-14">
