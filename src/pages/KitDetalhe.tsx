@@ -133,7 +133,7 @@ export default function KitDetalhePage() {
     }
 
     const totalVista = acc.fornecimento + acc.instalacao + acc.comodato;
-    const totalGeral = totalVista + acc.manutAnual + acc.comodatoAnual; // anualiza recorrências
+    const totalGeral = totalVista + acc.manutAnual + acc.comodatoAnual;
 
     return { ...acc, totalVista, totalGeral };
   }, [itensById, localRows, lotesById]);
@@ -290,10 +290,10 @@ export default function KitDetalhePage() {
                     <TableRow className="bg-muted/40">
                       <TableHead className="w-[220px]">Lote</TableHead>
                       <TableHead>Item</TableHead>
-                      <TableHead className="w-[110px]">Qtd</TableHead>
+                      <TableHead className="w-[130px]">Qtd</TableHead>
                       <TableHead className="w-[170px]">Tipo</TableHead>
                       <TableHead className="w-[160px]">Unit.</TableHead>
-                      <TableHead className="w-[170px]">Total</TableHead>
+                      <TableHead className="w-[170px">Total</TableHead>
                       <TableHead className="w-[170px]">Mensal</TableHead>
                       <TableHead className="w-[170px]">Anual</TableHead>
                       <TableHead className="w-[70px]"></TableHead>
@@ -368,7 +368,8 @@ export default function KitDetalhePage() {
                                   })
                                 }
                                 type="number"
-                                className="h-10 rounded-2xl"
+                                inputMode="numeric"
+                                className="h-10 w-32 rounded-2xl text-right tabular-nums"
                               />
                             </TableCell>
 
