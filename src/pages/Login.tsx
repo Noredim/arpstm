@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "@/components/auth/SessionProvider";
+import { AppLogo } from "@/components/app/app-logo";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -33,12 +34,10 @@ export default function LoginPage() {
             Autenticação segura com Supabase. Após entrar, você volta automaticamente para o sistema.
           </p>
 
-          <div className="overflow-hidden rounded-3xl border bg-muted/20">
-            <img
-              src="/brand-stelmat.png"
-              alt="Stelmat"
-              className="h-[220px] w-full object-contain p-8 md:h-[260px]"
-            />
+          <div className="overflow-hidden rounded-3xl border bg-muted/10">
+            <div className="h-[220px] w-full p-8 md:h-[260px]">
+              <AppLogo className="h-full w-full" />
+            </div>
           </div>
         </div>
 

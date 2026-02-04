@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { AppLogo } from "@/components/app/app-logo";
 
 export function BrandMark({
   className,
@@ -8,8 +9,6 @@ export function BrandMark({
   className?: string;
   compact?: boolean;
 }) {
-  const [imgOk, setImgOk] = React.useState(true);
-
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div
@@ -19,18 +18,7 @@ export function BrandMark({
         )}
         aria-label="Stelmat"
       >
-        {imgOk ? (
-          <img
-            src="/brand-stelmat.png"
-            alt="Stelmat"
-            className="h-full w-full object-contain p-1.5"
-            onError={() => setImgOk(false)}
-          />
-        ) : (
-          <div className="text-[10px] font-semibold tracking-tight text-sidebar-foreground/80">
-            Stelmat
-          </div>
-        )}
+        <AppLogo className="p-1.5" />
       </div>
 
       {!compact && (
