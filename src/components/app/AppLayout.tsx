@@ -36,6 +36,7 @@ import { useSession } from "@/components/auth/SessionProvider";
 import { BrandMark } from "@/components/app/brand-mark";
 import { AppWatermark } from "@/components/app/app-watermark";
 import { SidebarCollapseToggle } from "@/components/app/sidebar-collapse-toggle";
+import { useCurrentRole } from "@/components/app/useCurrentRole";
 
 const navHome = [{ to: "/", label: "Início", icon: Home }] as const;
 
@@ -58,7 +59,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useSession();
-
   const role = useCurrentRole();
 
   const canSeeBasico = role === "ADMIN" || role === "GESTOR";
@@ -223,10 +223,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="px-4 py-5 md:px-6 md:py-6">{children}</div>
-      </SidebarInset>
-    </SidebarProvider>
-  );
-}-6 md:py-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );
