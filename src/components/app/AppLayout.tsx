@@ -59,9 +59,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { user } = useSession();
 
-  // Enquanto o passo 2 (profiles/roles) não está ligado no app, mantemos menus completos.
-  const canSeeBasico = true;
-  const canSeeUsuario = true;
+  const role = useCurrentRole();
+
+  const canSeeBasico = role === "ADMIN" || role === "GESTOR";
+  const canSeeUsuario = role === "ADMIN";
 
   const pageTitle = React.useMemo(() => {
     const all = [
@@ -222,6 +223,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="px-4 py-5 md:px-6 md:py-6">{children}</div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}-6 md:py-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

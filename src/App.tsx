@@ -6,8 +6,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ArpStoreProvider } from "@/store/arp-store";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { RequireAuth } from "@/components/auth/RequireAuth";
+import { RequireRole } from "@/components/auth/RequireRole";
 
 import Index from "./pages/Index";
+
 import Login from "./pages/Login";
 import Clientes from "./pages/Clientes";
 import Atas from "./pages/Atas";
@@ -135,7 +137,9 @@ const App = () => (
                 path="/controle-saldo"
                 element={
                   <RequireAuth>
-                    <ControleSaldo />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <ControleSaldo />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
@@ -150,4 +154,7 @@ const App = () => (
   </QueryClientProvider>
 );
 
-export default App;
+export default App;der>
+);
+
+export default App;p; default App;
