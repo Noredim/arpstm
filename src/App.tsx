@@ -9,7 +9,6 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { RequireRole } from "@/components/auth/RequireRole";
 
 import Index from "./pages/Index";
-
 import Login from "./pages/Login";
 import Clientes from "./pages/Clientes";
 import Atas from "./pages/Atas";
@@ -45,70 +44,95 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/estados"
                 element={
                   <RequireAuth>
-                    <Estados />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <Estados />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/cidades"
                 element={
                   <RequireAuth>
-                    <Cidades />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <Cidades />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/usuarios"
                 element={
                   <RequireAuth>
-                    <Usuarios />
+                    <RequireRole allowed={["ADMIN"]}>
+                      <Usuarios />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/clientes"
                 element={
                   <RequireAuth>
-                    <Clientes />
+                    <RequireRole allowed={["ADMIN", "GESTOR", "COMERCIAL"]}>
+                      <Clientes />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/atas"
                 element={
                   <RequireAuth>
-                    <Atas />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <Atas />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/atas/:id"
                 element={
                   <RequireAuth>
-                    <AtaDetalhe />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <AtaDetalhe />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/kits"
                 element={
                   <RequireAuth>
-                    <Kits />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <Kits />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/kits/:id"
                 element={
                   <RequireAuth>
-                    <KitDetalhe />
+                    <RequireRole allowed={["ADMIN", "GESTOR"]}>
+                      <KitDetalhe />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/oportunidades"
                 element={
@@ -117,6 +141,7 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/oportunidades/nova"
                 element={
@@ -125,6 +150,7 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/oportunidades/:id"
                 element={
@@ -133,6 +159,7 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="/controle-saldo"
                 element={
@@ -154,7 +181,4 @@ const App = () => (
   </QueryClientProvider>
 );
 
-export default App;der>
-);
-
-export default App;p; default App;
+export default App;
