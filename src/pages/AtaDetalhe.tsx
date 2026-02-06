@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "@/hooks/use-toast";
 import type {
   Arp,
@@ -63,10 +65,7 @@ import {
   Pencil,
   Plus,
   Trash2,
-  Upload,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const TIPOS_FORNECIMENTO: { value: TipoFornecimento; label: string; icon: React.ElementType }[] = [
   { value: "FORNECIMENTO", label: "Fornecimento", icon: Package },
@@ -224,16 +223,542 @@ export default function AtaDetalhePage() {
 
   return (
     <AppLayout>
-      {/* ... resto do componente AtaDetalhePage permanece igual até o final ... */}
+      <div className="grid gap-4">
+        <Card className="rounded-3xl border p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <Button
+                variant="secondary"
+                className="mb-3 rounded-2xl"
+                onClick={() => navigate("/atas")}
+              >
+                Voltar para Atas
+              </Button>
+              <div className="text-lg font-semibold tracking-tight">{arp.nomeAta}</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Cliente: {clienteLabel(clientesById[arp.clienteId] as Cliente | undefined)}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  className="rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
+                >
+                  {status === "VIGENTE" ? "Vigente" : "Encerrada"}
+                </Badge>
+                {arp.isConsorcio && (
+                  <Badge className="rounded-full bg-indigo-600 text-white">Consórcio</Badge>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {arp.dataAssinatura} • {arp.dataVencimento}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1 rounded-2xl"
+                onClick={() => setOpenEdit(true)}
+              >
+                <Pencil className="mr-2 size-4" />
+                Editar cabeçalho
+              </Button>
+            </div>
+          </div>
+        </Card>
 
-      {/* (o restante do conteúdo da página, incluindo ParticipantesTab, LoteDialog, LoteCard) */}
+        <Tabs defaultValue="lotes" className="w-full">
+          <TabsList className="h-10 w-full justify-start rounded-2xl bg-muted/40 p-1">
+            <TabsTrigger value="lotes" className="rounded-2xl">
+              Lotes e Itens
+            </TabsTrigger>
+            <TabsTrigger value="participantes" className="rounded-2xl">
+              Participantes
+            </TabsTrigger>
+          </TabsList>
 
-      {/* ItemDialog + EquipamentoDialog atualizados logo abaixo */}
+          <TabsContent value="lotes" className="mt-4 space-y-4">
+            <Card className="rounded-3xl border p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold tracking-tight">Lotes da ATA</div>
+                  <div className="text-sm text-muted-foreground">
+                    Estruture os lotes por tipo de fornecimento, instalação, manutenção e comodato.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <ImportItensCsvDialog
+                    arp={arp}
+                    onApply={(loteId, itens) => setLoteItens(arp.id, loteId, itens)}
+                  />
+                  <Button
+                    className="rounded-2xl"
+                    onClick={() => {
+                      setEditingLote(undefined);
+                      setOpenLote(true);
+                    }}
+                  >
+                    <Plus className="mr-2 size-4" />
+                    Novo lote
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {arp.lotes.length === 0 ? (
+              <Card className="rounded-3xl border p-6 text-center text-sm text-muted-foreground">
+                Nenhum lote cadastrado ainda.
+              </Card>
+            ) : (
+              arp.lotes.map((lote) => (
+                <LoteCard
+                  key={lote.id}
+                  arp={arp}
+                  lote={lote}
+                  clientesById={clientesById}
+                  open={openByLoteId[lote.id] ?? false}
+                  onToggle={() =>
+                    setOpenByLoteId((prev) => ({ ...prev, [lote.id]: !prev[lote.id] }))
+                  }
+                  onEditLote={() => {
+                    setEditingLote(lote);
+                    setOpenLote(true);
+                  }}
+                  onDeleteLote={() => {
+                    if (
+                      !confirm(
+                        "Remover lote e todos os itens vinculados? Essa ação impactará oportunidades que o utilizem.",
+                      )
+                    )
+                      return;
+                    deleteLote(arp.id, lote.id);
+                  }}
+                  onNewItem={() => {
+                    setCtxItem({ loteId: lote.id });
+                    setOpenItem(true);
+                  }}
+                  onEditItem={(itemId) => {
+                    setCtxItem({ loteId: lote.id, itemId });
+                    setOpenItem(true);
+                  }}
+                  onDeleteItem={(itemId) => {
+                    if (!confirm("Remover item deste lote?")) return;
+                    deleteItem(arp.id, lote.id, itemId);
+                  }}
+                />
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="participantes" className="mt-4">
+            <ParticipantesTab
+              arp={arp}
+              clientes={state.clientes}
+              onAdd={(clienteId) => addParticipante(arp.id, clienteId)}
+              onRemove={(clienteId) => removeParticipante(arp.id, clienteId)}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <ArpFormSheet open={openEdit} onOpenChange={setOpenEdit} initial={arp} onSubmit={submitArp} />
+
+      <LoteDialog
+        open={openLote}
+        onOpenChange={setOpenLote}
+        initial={editingLote}
+        onSubmit={submitLote}
+      />
+
+      <ItemDialog
+        open={openItem}
+        onOpenChange={setOpenItem}
+        lote={ctxLote}
+        initial={ctxInitial}
+        onSubmit={submitItem}
+        onAddEquip={(arpItemId, data) => addEquipamento(arp.id, ctxLote!.id, arpItemId, data)}
+        onUpdateEquip={(arpItemId, equipId, patch) =>
+          updateEquipamento(arp.id, ctxLote!.id, arpItemId, equipId, patch)
+        }
+        onDeleteEquip={(arpItemId, equipId) => deleteEquipamento(arp.id, ctxLote!.id, arpItemId, equipId)}
+      />
     </AppLayout>
   );
 }
 
-// ... ParticipantesTab, LoteDialog, LoteCard permanecem exatamente iguais ...
+function ParticipantesTab({
+  arp,
+  clientes,
+  onAdd,
+  onRemove,
+}: {
+  arp: Arp;
+  clientes: Cliente[];
+  onAdd: (clienteId: string) => void;
+  onRemove: (clienteId: string) => void;
+}) {
+  const [clienteId, setClienteId] = React.useState<string>("");
+
+  const participantes = arp.participantes
+    .map((id) => clientes.find((c) => c.id === id))
+    .filter(Boolean) as Cliente[];
+
+  const naoParticipantes = clientes.filter((c) => !arp.participantes.includes(c.id));
+
+  return (
+    <Card className="rounded-3xl border p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold tracking-tight">Participantes</div>
+          <div className="text-sm text-muted-foreground">
+            Defina quais clientes participam da ATA para cálculo de saldo por participante.
+          </div>
+        </div>
+
+        <div className="space-y-1.5 min-w-[260px]">
+          <Label>Adicionar participante</Label>
+          <div className="flex gap-2">
+            <Select value={clienteId} onValueChange={setClienteId}>
+              <SelectTrigger className="h-11 rounded-2xl flex-1">
+                <SelectValue placeholder="Selecione o cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                {naoParticipantes.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {clienteLabel(c)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="rounded-2xl"
+              onClick={() => {
+                if (!clienteId) return;
+                onAdd(clienteId);
+                setClienteId("");
+              }}
+              disabled={!clienteId}
+            >
+              Adicionar
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Separator className="my-4" />
+
+      {participantes.length === 0 ? (
+        <div className="text-sm text-muted-foreground">
+          Nenhum participante definido. Todos os clientes serão considerados como carona.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead>Cliente</TableHead>
+                <TableHead className="w-[120px] text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {participantes.map((c) => (
+                <TableRow key={c.id} className="hover:bg-muted/30">
+                  <TableCell className="text-sm font-medium">{clienteLabel(c)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-2xl text-destructive hover:text-destructive"
+                      onClick={() => onRemove(c.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function LoteDialog({
+  open,
+  onOpenChange,
+  initial,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initial?: ArpLote;
+  onSubmit: (data: { nomeLote: string; tipoFornecimento: TipoFornecimento }) => void;
+}) {
+  const [nome, setNome] = React.useState("");
+  const [tipo, setTipo] = React.useState<TipoFornecimento>("FORNECIMENTO");
+
+  React.useEffect(() => {
+    if (!open) return;
+    setNome(initial?.nomeLote ?? "");
+    setTipo(initial?.tipoFornecimento ?? "FORNECIMENTO");
+  }, [open, initial?.id, initial?.nomeLote, initial?.tipoFornecimento]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md rounded-3xl">
+        <DialogHeader>
+          <DialogTitle className="text-base tracking-tight">
+            {initial ? "Editar lote" : "Novo lote"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="space-y-1.5">
+            <Label>Nome do lote</Label>
+            <Input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              className="h-11 rounded-2xl"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tipo de fornecimento</Label>
+            <Select
+              value={tipo}
+              onValueChange={(v) => setTipo(v as TipoFornecimento)}
+            >
+              <SelectTrigger className="h-11 rounded-2xl">
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                {TIPOS_FORNECIMENTO.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="secondary"
+              className="rounded-2xl"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="rounded-2xl"
+              onClick={() => onSubmit({ nomeLote: nome, tipoFornecimento: tipo })}
+            >
+              Salvar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LoteCard({
+  arp,
+  lote,
+  clientesById,
+  open,
+  onToggle,
+  onEditLote,
+  onDeleteLote,
+  onNewItem,
+  onEditItem,
+  onDeleteItem,
+}: {
+  arp: Arp;
+  lote: ArpLote;
+  clientesById: Record<string, Cliente | undefined>;
+  open: boolean;
+  onToggle: () => void;
+  onEditLote: () => void;
+  onDeleteLote: () => void;
+  onNewItem: () => void;
+  onEditItem: (itemId: string) => void;
+  onDeleteItem: (itemId: string) => void;
+}) {
+  const totalItens = lote.itens.length;
+  const totalValor = lote.itens.reduce((acc, it) => acc + itemValorTotal(it), 0);
+  const totalMensal = lote.itens.reduce((acc, it) => acc + itemValorTotalMensal(it), 0);
+  const totalAnual = lote.itens.reduce((acc, it) => acc + itemTotalAnual(it), 0);
+
+  return (
+    <Card className="rounded-3xl border p-4">
+      <Collapsible open={open} onOpenChange={onToggle}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold tracking-tight">{lote.nomeLote}</div>
+              <Badge variant="secondary" className="rounded-full text-xs">
+                {tipoLabel(lote.tipoFornecimento)}
+              </Badge>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>{totalItens} item(s)</span>
+              <span>•</span>
+              <span>Total: {moneyBRL(totalValor)}</span>
+              {totalMensal > 0 && (
+                <>
+                  <span>•</span>
+                  <span>Mensal: {moneyBRL(totalMensal)}</span>
+                </>
+              )}
+              {totalAnual > 0 && (
+                <>
+                  <span>•</span>
+                  <span>Anual: {moneyBRL(totalAnual)}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-2xl"
+              onClick={onEditLote}
+            >
+              <Pencil className="mr-2 size-4" />
+              Editar lote
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-2xl text-destructive"
+              onClick={onDeleteLote}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Remover
+            </Button>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-2xl"
+              >
+                {open ? <ChevronsUp className="size-4" /> : <ChevronsDown className="size-4" />}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </div>
+
+        <CollapsibleContent className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ClipboardList className="size-4" />
+              <span>Itens do lote</span>
+            </div>
+            <Button
+              size="sm"
+              className="rounded-2xl"
+              onClick={onNewItem}
+            >
+              <Plus className="mr-2 size-4" />
+              Novo item
+            </Button>
+          </div>
+
+          {lote.itens.length === 0 ? (
+            <div className="rounded-2xl border bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+              Nenhum item cadastrado para este lote.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="w-[90px]">Item</TableHead>
+                    <TableHead>Nome comercial</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead className="w-[80px] text-right">Unid.</TableHead>
+                    <TableHead className="w-[80px] text-right">Qtde</TableHead>
+                    <TableHead className="w-[120px] text-right">Unitário</TableHead>
+                    <TableHead className="w-[120px] text-right">Total</TableHead>
+                    <TableHead className="w-[120px] text-right">Mensal</TableHead>
+                    <TableHead className="w-[120px] text-right">Anual</TableHead>
+                    <TableHead className="w-[120px] text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lote.itens
+                    .slice()
+                    .sort(compareNumeroItem)
+                    .map((it) => {
+                      const totalLinha = itemValorTotal(it);
+                      const totalMensal = itemValorTotalMensal(it);
+                      const totalAnual = itemTotalAnual(it);
+                      const nome = getNomeComercial(it);
+
+                      const valorUnitario =
+                        it.kind === "MANUTENCAO"
+                          ? (it as ArpItemManutencao).valorUnitarioMensal
+                          : (it as ArpItemFornecimento).valorUnitario;
+
+                      return (
+                        <TableRow key={it.id} className="hover:bg-muted/30">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {it.numeroItem}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">{nome}</TableCell>
+                          <TableCell className="max-w-md text-xs text-muted-foreground">
+                            {it.descricaoInterna}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">{it.unidade}</TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">{it.total}</TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">
+                            {moneyBRL(valorUnitario)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">
+                            {moneyBRL(totalLinha)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">
+                            {totalMensal > 0 ? moneyBRL(totalMensal) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">
+                            {totalAnual > 0 ? moneyBRL(totalAnual) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="rounded-2xl"
+                                onClick={() => onEditItem(it.id)}
+                              >
+                                <Pencil className="mr-2 size-3.5" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="rounded-2xl text-destructive hover:text-destructive"
+                                onClick={() => onDeleteItem(it.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
 
 function ItemDialog({
   open,
@@ -271,7 +796,7 @@ function ItemDialog({
   const [tipoItem, setTipoItem] = React.useState<TipoItemManutencao>("PRODUTO");
   const [valorUnitarioMensal, setValorUnitarioMensal] = React.useState<number>(0);
 
-  // novo: estado local para imagem de referência
+  // upload de imagem: apenas referência visual local
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
   const [equipOpen, setEquipOpen] = React.useState(false);
@@ -279,24 +804,26 @@ function ItemDialog({
 
   React.useEffect(() => {
     if (!open) return;
+
     setNumeroItem(initial?.numeroItem ?? "");
-    setNomeComercial((initial as any)?.nomeComercial ?? (initial ? getNomeComercial(initial) : ""));
+    setNomeComercial(
+      (initial as any)?.nomeComercial ?? (initial ? getNomeComercial(initial) : ""),
+    );
     setDescricaoInterna((initial as any)?.descricaoInterna ?? "");
     setDescricao(initial?.descricao ?? "");
     setUnidade(initial?.unidade ?? "");
     setTotal(initial?.total ?? 1);
-
-    // reset imagem ao abrir (não está persistida ainda)
     setPreviewUrl(null);
 
     if (lote?.tipoFornecimento === "MANUTENCAO") {
-      const i = initial?.kind === "MANUTENCAO" ? initial : undefined;
+      const i = initial?.kind === "MANUTENCAO" ? (initial as ArpItemManutencao) : undefined;
       setTipoItem(i?.tipoItem ?? "PRODUTO");
-      setValorUnitarioMensal((i as any)?.valorUnitarioMensal ?? 0);
+      setValorUnitarioMensal(i?.valorUnitarioMensal ?? 0);
       setValorUnitarioMensalOptional(0);
     } else {
-      setValorUnitario((initial as any)?.valorUnitario ?? 0);
-      setValorUnitarioMensalOptional((initial as any)?.valorUnitarioMensal ?? 0);
+      const i = initial && initial.kind !== "MANUTENCAO" ? (initial as ArpItemFornecimento) : undefined;
+      setValorUnitario(i?.valorUnitario ?? 0);
+      setValorUnitarioMensalOptional(i?.valorUnitarioMensal ?? 0);
     }
   }, [open, initial, lote?.tipoFornecimento]);
 
@@ -339,7 +866,9 @@ function ItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl rounded-3xl">
         <DialogHeader>
-          <DialogTitle className="text-base tracking-tight">{initial ? "Editar item" : "Novo item"}</DialogTitle>
+          <DialogTitle className="text-base tracking-tight">
+            {initial ? "Editar item" : "Novo item"}
+          </DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="dados" className="w-full">
@@ -407,7 +936,12 @@ function ItemDialog({
                           {/* eslint-disable-next-line jsx-a11y/alt-text */}
                           <img src={previewUrl} className="h-full w-full object-cover" />
                         </div>
-                        <Button variant="ghost" size="icon" className="rounded-2xl" onClick={clearImage}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-2xl"
+                          onClick={clearImage}
+                        >
                           <Trash2 className="size-4 text-destructive" />
                         </Button>
                       </div>
@@ -468,7 +1002,9 @@ function ItemDialog({
                       <Label>Valor mensal (opcional)</Label>
                       <Input
                         value={valorUnitarioMensalOptional}
-                        onChange={(e) => setValorUnitarioMensalOptional(Number(e.target.value || 0))}
+                        onChange={(e) =>
+                          setValorUnitarioMensalOptional(Number(e.target.value || 0))
+                        }
                         type="number"
                         min={0}
                         step={0.01}
@@ -481,7 +1017,10 @@ function ItemDialog({
                   <>
                     <div className="space-y-1.5">
                       <Label>Tipo do item</Label>
-                      <Select value={tipoItem} onValueChange={(v) => setTipoItem(v as TipoItemManutencao)}>
+                      <Select
+                        value={tipoItem}
+                        onValueChange={(v) => setTipoItem(v as TipoItemManutencao)}
+                      >
                         <SelectTrigger className="h-11 rounded-2xl">
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
@@ -524,7 +1063,11 @@ function ItemDialog({
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button variant="secondary" className="rounded-2xl" onClick={() => onOpenChange(false)}>
+                <Button
+                  variant="secondary"
+                  className="rounded-2xl"
+                  onClick={() => onOpenChange(false)}
+                >
                   Cancelar
                 </Button>
                 <Button
@@ -544,7 +1087,9 @@ function ItemDialog({
                             kind: lote.tipoFornecimento,
                             valorUnitario,
                             valorUnitarioMensal:
-                              valorUnitarioMensalOptional > 0 ? valorUnitarioMensalOptional : undefined,
+                              valorUnitarioMensalOptional > 0
+                                ? valorUnitarioMensalOptional
+                                : undefined,
                           }),
                     } as any)
                   }
@@ -555,12 +1100,280 @@ function ItemDialog({
             </div>
           </TabsContent>
 
-          {/* Aba de equipamentos permanece igual */}
-          {/* ... Equipamentos (TabsContent value="equip") e EquipamentoDialog logo abaixo, inalterados ... */}
+          <TabsContent value="equip" className="mt-4">
+            <EquipamentosTab
+              lote={lote}
+              item={initial as any}
+              open={equipOpen}
+              onOpenChange={setEquipOpen}
+              editing={equipEditing}
+              setEditing={setEquipEditing}
+              onAddEquip={onAddEquip}
+              onUpdateEquip={onUpdateEquip}
+              onDeleteEquip={onDeleteEquip}
+            />
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
   );
 }
 
-// EquipamentoDialog permanece igual ao código que você já tinha, sem alterações.
+function EquipamentosTab({
+  lote,
+  item,
+  open,
+  onOpenChange,
+  editing,
+  setEditing,
+  onAddEquip,
+  onUpdateEquip,
+  onDeleteEquip,
+}: {
+  lote: ArpLote;
+  item?: ArpItem;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editing?: ArpItemEquipamento;
+  setEditing: (eq: ArpItemEquipamento | undefined) => void;
+  onAddEquip: (arpItemId: string, data: Omit<ArpItemEquipamento, "id" | "arpItemId">) => void;
+  onUpdateEquip: (
+    arpItemId: string,
+    equipamentoId: string,
+    patch: Partial<Omit<ArpItemEquipamento, "id" | "arpItemId">>,
+  ) => void;
+  onDeleteEquip: (arpItemId: string, equipamentoId: string) => void;
+}) {
+  const equipamentos = (item as any)?.equipamentos ?? [];
+
+  const [nomeEquipamento, setNomeEquipamento] = React.useState("");
+  const [quantidade, setQuantidade] = React.useState<number>(1);
+  const [custoUnitario, setCustoUnitario] = React.useState<number>(0);
+  const [fornecedor, setFornecedor] = React.useState("");
+  const [fabricante, setFabricante] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (!editing) {
+      setNomeEquipamento("");
+      setQuantidade(1);
+      setCustoUnitario(0);
+      setFornecedor("");
+      setFabricante("");
+      return;
+    }
+    setNomeEquipamento(editing.nomeEquipamento ?? "");
+    setQuantidade(editing.quantidade ?? 1);
+    setCustoUnitario(editing.custoUnitario ?? 0);
+    setFornecedor(editing.fornecedor ?? "");
+    setFabricante(editing.fabricante ?? "");
+  }, [open, editing]);
+
+  function submit() {
+    if (!item) return;
+    if (!nomeEquipamento.trim())
+      return toast({ title: "Informe o nome do equipamento", variant: "destructive" });
+    if (quantidade <= 0)
+      return toast({ title: "Quantidade deve ser maior que zero", variant: "destructive" });
+
+    const payload = {
+      nomeEquipamento: nomeEquipamento.trim(),
+      quantidade,
+      custoUnitario,
+      fornecedor: fornecedor.trim() || undefined,
+      fabricante: fabricante.trim() || undefined,
+    };
+
+    if (editing) {
+      onUpdateEquip(item.id, editing.id, payload);
+      toast({ title: "Equipamento atualizado" });
+    } else {
+      onAddEquip(item.id, payload);
+      toast({ title: "Equipamento adicionado" });
+    }
+
+    onOpenChange(false);
+    setEditing(undefined);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Boxes className="size-4" />
+          <span>Equipamentos vinculados ao item</span>
+        </div>
+        <Button
+          size="sm"
+          className="rounded-2xl"
+          onClick={() => {
+            setEditing(undefined);
+            onOpenChange(true);
+          }}
+        >
+          <Plus className="mr-2 size-4" />
+          Adicionar equipamento
+        </Button>
+      </div>
+
+      {equipamentos.length === 0 ? (
+        <div className="rounded-2xl border bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+          Nenhum equipamento vinculado a este item.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead>Equipamento</TableHead>
+                <TableHead className="w-[80px] text-right">Qtd</TableHead>
+                <TableHead className="w-[120px] text-right">Custo unitário</TableHead>
+                <TableHead className="w-[120px] text-right">Total</TableHead>
+                <TableHead className="w-[160px]">Fornecedor</TableHead>
+                <TableHead className="w-[160px]">Fabricante</TableHead>
+                <TableHead className="w-[120px] text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {equipamentos.map((eq: ArpItemEquipamento) => {
+                const total = round2(eq.quantidade * eq.custoUnitario);
+                return (
+                  <TableRow key={eq.id} className="hover:bg-muted/30">
+                    <TableCell className="text-sm font-medium">
+                      {eq.nomeEquipamento}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {eq.quantidade}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {moneyBRL(eq.custoUnitario)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {moneyBRL(total)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {eq.fornecedor ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {eq.fabricante ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-2xl"
+                          onClick={() => {
+                            setEditing(eq);
+                            onOpenChange(true);
+                          }}
+                        >
+                          <Pencil className="mr-2 size-3.5" />
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-2xl text-destructive hover:text-destructive"
+                          onClick={() => onDeleteEquip(item!.id, eq.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-lg rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-base tracking-tight">
+              {editing ? "Editar equipamento" : "Novo equipamento"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label>Nome do equipamento</Label>
+              <Input
+                value={nomeEquipamento}
+                onChange={(e) => setNomeEquipamento(e.target.value)}
+                className="h-11 rounded-2xl"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Quantidade</Label>
+                <Input
+                  value={quantidade}
+                  onChange={(e) => setQuantidade(Number(e.target.value || 0))}
+                  type="number"
+                  min={0}
+                  className="h-11 rounded-2xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Custo unitário</Label>
+                <Input
+                  value={custoUnitario}
+                  onChange={(e) => setCustoUnitario(Number(e.target.value || 0))}
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  className="h-11 rounded-2xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Total</Label>
+                <div className="h-11 rounded-2xl border bg-muted/30 px-3 py-2 text-sm font-semibold tabular-nums">
+                  {moneyBRL(round2(quantidade * custoUnitario))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Fornecedor</Label>
+                <Input
+                  value={fornecedor}
+                  onChange={(e) => setFornecedor(e.target.value)}
+                  className="h-11 rounded-2xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fabricante</Label>
+                <Input
+                  value={fabricante}
+                  onChange={(e) => setFabricante(e.target.value)}
+                  className="h-11 rounded-2xl"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={() => {
+                  onOpenChange(false);
+                  setEditing(undefined);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button className="rounded-2xl" onClick={submit}>
+                Salvar equipamento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
