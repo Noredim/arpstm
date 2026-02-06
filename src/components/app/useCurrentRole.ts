@@ -1,7 +1,7 @@
-import { useProfileRole } from "@/components/auth/useProfileRole";
-import type { UserRole } from "@/lib/arp-types";
+import { useArpStore } from "@/store/arp-store";
 
-export function useCurrentRole(): UserRole | null {
-  const { role } = useProfileRole();
-  return role;
+export function useCurrentRole() {
+  const { getCurrentUser } = useArpStore();
+  const user = getCurrentUser();
+  return user.role;
 }

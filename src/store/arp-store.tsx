@@ -29,7 +29,6 @@ import {
   normalizeOportunidadeStatus,
   type SaldoTipo,
 } from "@/lib/saldo-helpers";
-import { useCurrentUserEmail } from "@/components/auth/useCurrentUserEmail";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -307,15 +306,6 @@ const ArpStoreContext = React.createContext<ArpStore | null>(null);
 
 export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<ArpState>(() => loadInitial());
-  const sessionEmail = useCurrentUserEmail();
-
-  React.useEffect(() => {
-    if (!sessionEmail) return;
-    setState((s) => {
-      if (s.currentUserEmail.toLowerCase() === sessionEmail.toLowerCase()) return s;
-      return { ...s, currentUserEmail: sessionEmail };
-    });
-  }, [sessionEmail]);
 
   React.useEffect(() => {
     persist(state);
@@ -472,7 +462,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       // Usuários
       getCurrentUser: () => currentUser(),
       setCurrentUserEmail: (email) => {
-        setState((s) => ({ ...s, currentUserEmail: email.trim().toLowerCase() }));
+        setState((s) => ({ ...s, currentUserEmail: email }));
       },
       createUsuario: (data) => {
         requireRole(["ADMIN"]);
@@ -789,8 +779,8 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
             for (const ki of nextKitItems) (byKitId[ki.kitId] ??= []).push(ki);
             const kitItens: OportunidadeKitItem[] = [];
             for (const ok of kits) {
-              const itemsK = byKitId[ok.kitId] ?? [];
-              for (const ki of itemsK) {
+              const items = byKitId[ok.kitId] ?? [];
+              for (const ki of items) {
                 kitItens.push({
                   id: `${ok.id}:${ki.id}`,
                   oportunidadeId,
@@ -806,8 +796,8 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
 
           const oportunidades = s.oportunidades.map((o) => {
             const nextItensAvulsos = (o.itens ?? []).filter((oi) => !removedIds.includes(oi.arpItemId));
-            const kitsO = o.kits ?? [];
-            const kitItens = recomputeKitItens(o.id, kitsO);
+            const kits = o.kits ?? [];
+            const kitItens = recomputeKitItens(o.id, kits);
             return { ...o, itens: nextItensAvulsos, kitItens };
           });
 
@@ -870,9 +860,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           const affectedKitIds = new Set(s.kitItems.filter((ki) => ki.arpItemId === itemId).map((ki) => ki.kitId));
 
           const oportunidades = s.oportunidades.map((o) => {
-            const kitsO = o.kits ?? [];
-            if (!kitsO.some((k) => affectedKitIds.has(k.kitId))) return o;
-            const kitItens = recalcKitItensForOportunidade(o.id, kitsO);
+            const kits = o.kits ?? [];
+            if (!kits.some((k) => affectedKitIds.has(k.kitId))) return o;
+            const kitItens = recalcKitItensForOportunidade(o.id, kits);
             return { ...o, kitItens };
           });
 
@@ -985,10 +975,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           const kits = s.kits.filter((k) => k.id !== id);
           const kitItems = s.kitItems.filter((ki) => ki.kitId !== id);
           const oportunidades = s.oportunidades.map((o) => {
-            const nextKits = o.kits ?? [];
-            const filteredKits = nextKits.filter((ok) => ok.kitId !== id);
-            const kitItens = recalcKitItensForOportunidade(o.id, filteredKits);
-            return { ...o, kits: filteredKits, kitItens };
+            const nextKits = (o.kits ?? []).filter((ok) => ok.kitId !== id);
+            const kitItens = recalcKitItensForOportunidade(o.id, nextKits);
+            return { ...o, kits: nextKits, kitItens };
           });
           return { ...s, kits, kitItems, oportunidades };
         });
@@ -1020,9 +1009,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       updateKitItem: (kitId, kitItemId, patch) => {
         setState((s) => {
           const kitItems = s.kitItems.map((ki) =>
-            ki.id === kitItemId && ki.kitId === kitId
-              ? { ...ki, ...patch, quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade }
-              : ki,
+            ki.id === kitItemId && ki.kitId === kitId ? { ...ki, ...patch, quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade } : ki,
           );
           const now = nowIso();
           const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
@@ -1059,7 +1046,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         const dataAbertura = todayIso();
         const draft: Oportunidade = {
           id: uid("opp"),
-          codigo: 0,
+          codigo: 0, // será definido ao salvar
           titulo: "",
           descricao: "",
           temperatura: "MORNA",
@@ -1095,6 +1082,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
           kitItens: (draft as any).kitItens ?? [],
         } as Oportunidade;
 
+        // se estiver GANHAMOS, valida saldo usando a regra existente do sistema
         if (normalizeOportunidadeStatus(next.status) === "GANHAMOS") {
           validateSaldoParaOportunidade(next);
         }

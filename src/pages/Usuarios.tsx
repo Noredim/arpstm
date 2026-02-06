@@ -38,7 +38,6 @@ import { dateTimeBR } from "@/lib/arp-utils";
 import { useArpStore } from "@/store/arp-store";
 import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
-import { useProfileRole } from "@/components/auth/useProfileRole";
 
 const MASTER_EMAIL = "ricardo.noredim@stelmat.com.br";
 
@@ -65,11 +64,11 @@ function statusBadge(ativo: boolean) {
 }
 
 export default function UsuariosPage() {
-  const { state, createUsuario, updateUsuario, deleteUsuario, setCurrentUserEmail } = useArpStore();
-  const { role: profileRole, user, loading: roleLoading } = useProfileRole();
+  const { state, getCurrentUser, createUsuario, updateUsuario, deleteUsuario, setCurrentUserEmail } = useArpStore();
 
-  const isAdmin = profileRole === "ADMIN";
-  const isMaster = (user?.email ?? "").toLowerCase() === MASTER_EMAIL.toLowerCase();
+  const me = getCurrentUser();
+  const isAdmin = me.role === "ADMIN";
+  const isMaster = me.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
   const canResetPasswords = isAdmin && isMaster;
 
   const [open, setOpen] = React.useState(false);
@@ -106,19 +105,6 @@ export default function UsuariosPage() {
     setResetPasswordConfirm("");
     setShowResetPassword(false);
   }, [editing, open]);
-
-  if (roleLoading) {
-    return (
-      <AppLayout>
-        <Card className="rounded-3xl border p-6">
-          <div className="text-sm font-medium">Carregando permissões…</div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            Validando perfil de acesso no Supabase.
-          </div>
-        </Card>
-      </AppLayout>
-    );
-  }
 
   if (!isAdmin) {
     return (
@@ -224,8 +210,6 @@ export default function UsuariosPage() {
     }
   }
 
-  const meRow = state.usuarios.find((u) => u.email.toLowerCase() === (user?.email ?? "").toLowerCase()) ?? null;
-
   return (
     <AppLayout>
       <div className="grid gap-4">
@@ -250,14 +234,9 @@ export default function UsuariosPage() {
           </div>
 
           <div className="mt-4 rounded-2xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-            Usuário atual:{" "}
-            <span className="font-medium text-foreground">{user?.email ?? "—"}</span>{" "}
-            • {roleLabel(profileRole ?? "COMERCIAL")}
+            Usuário atual: <span className="font-medium text-foreground">{me.email}</span> • {roleLabel(me.role)}
           </div>
         </Card>
-
-        {/* restante da tabela e diálogos permanecem iguais,
-            usando state.usuarios e deleteUsuario como antes */}
 
         <Card className="rounded-3xl border p-4">
           <div className="overflow-hidden rounded-2xl border">
@@ -277,7 +256,7 @@ export default function UsuariosPage() {
                   .sort((a, b) => a.email.localeCompare(b.email))
                   .map((u) => {
                     const isMasterRow = u.email.toLowerCase() === MASTER_EMAIL.toLowerCase();
-                    const isCurrent = meRow?.id === u.id;
+                    const isCurrent = u.email.toLowerCase() === state.currentUserEmail.toLowerCase();
                     return (
                       <TableRow key={u.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
@@ -315,7 +294,7 @@ export default function UsuariosPage() {
                               className="rounded-xl"
                               onClick={() => {
                                 setCurrentUserEmail(u.email);
-                                toast({ title: "Usuário atual alterado (somente store local)", description: u.email });
+                                toast({ title: "Usuário atual alterado", description: u.email });
                               }}
                             >
                               Usar
@@ -339,10 +318,204 @@ export default function UsuariosPage() {
             </Table>
           </div>
         </Card>
-        {/* diálogos de edição/remoção mantidos iguais, usando submit/deleteUsuario */}
-
-        {/* ... resto do componente igual ao original ... */}
       </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-base tracking-tight">{editing ? "Editar usuário" : "Novo usuário"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label>E-mail</Label>
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11 rounded-2xl"
+                placeholder="nome@empresa.com"
+              />
+            </div>
+
+            {isCreating && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Senha</Label>
+                  <div className="relative">
+                    <Input
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-11 rounded-2xl pr-10"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="mínimo 6 caracteres"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Confirmar senha</Label>
+                  <Input
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                    className="h-11 rounded-2xl"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="repita a senha"
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Perfil</Label>
+                <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+                  <SelectTrigger className="h-11 rounded-2xl">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="GESTOR">Gestor</SelectItem>
+                    <SelectItem value="COMERCIAL">Comercial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end justify-between rounded-2xl border bg-muted/20 px-4 py-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <div className="text-sm font-medium">{ativo ? "Ativo" : "Inativo"}</div>
+                </div>
+                <Switch checked={ativo} onCheckedChange={setAtivo} />
+              </div>
+            </div>
+
+            {editing && canResetPasswords && (
+              <div className="rounded-3xl border bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-10 place-items-center rounded-2xl bg-background">
+                    <KeyRound className="size-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold tracking-tight">Redefinir senha (opcional)</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Preencha apenas se quiser trocar a senha no Supabase Authentication.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Nova senha</Label>
+                    <div className="relative">
+                      <Input
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        className="h-11 rounded-2xl pr-10"
+                        type={showResetPassword ? "text" : "password"}
+                        placeholder="mínimo 6 caracteres"
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPassword((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                        aria-label={showResetPassword ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {showResetPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Confirmar nova senha</Label>
+                    <Input
+                      value={resetPasswordConfirm}
+                      onChange={(e) => setResetPasswordConfirm(e.target.value)}
+                      className="h-11 rounded-2xl"
+                      type={showResetPassword ? "text" : "password"}
+                      placeholder="repita a senha"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 text-xs text-muted-foreground">
+                  A redefinição é feita por e-mail e só funciona se o usuário existir no Supabase Authentication.
+                </div>
+              </div>
+            )}
+
+            {errors.length > 0 && (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <ul className="list-inside list-disc">
+                  {errors.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={() => {
+                  setOpen(false);
+                  setEditing(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button className="rounded-2xl" onClick={() => void submit()} disabled={errors.length > 0}>
+                Salvar
+              </Button>
+            </div>
+
+            {isCreating && (
+              <div className="text-xs text-muted-foreground">
+                Ao salvar, o usuário será criado também no Supabase Authentication (com e-mail confirmado).
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(removeId)} onOpenChange={(o) => (!o ? setRemoveId(null) : null)}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-2xl">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-2xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!removeId) return;
+                try {
+                  deleteUsuario(removeId);
+                  toast({ title: "Usuário excluído" });
+                  setRemoveId(null);
+                } catch (err: any) {
+                  toast({ title: "Erro", description: String(err?.message ?? err), variant: "destructive" });
+                }
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
