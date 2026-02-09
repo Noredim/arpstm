@@ -46,6 +46,11 @@ type ArpState = {
   oportunidadeSeq: number;
 };
 
+// AVISO IMPORTANTE:
+// Este store ainda mantém os dados em memória/localStorage.
+// A migração para Supabase será feita módulo a módulo
+// conforme combinação com o usuário.
+
 const STORAGE_KEY = "dyad:arp:v1";
 
 function seedUsuarios(): { usuarios: Usuario[]; currentUserEmail: string } {
@@ -214,6 +219,9 @@ function loadInitial(): ArpState {
 function persist(state: ArpState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
+// A PARTIR DAQUI: nenhuma API mudou ainda. Na próxima etapa, cada
+// operação será migrada para Supabase mantendo estas assinaturas.
 
 type ArpStore = {
   state: ArpState;
@@ -523,7 +531,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
-      // Integração IBGE
+      // Integração IBGE (ainda em memória)
       syncIbgeLocalidades: async (params) => {
         const res = await syncIbgeLocalidades({
           role: currentUser().role === "ADMIN" ? "ADMIN" : "USER",
@@ -547,7 +555,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         return res.resumo;
       },
 
-      // Clientes
+      // Clientes (ainda em memória)
       createCliente: (data) => {
         requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const cliente: Cliente = {
@@ -585,7 +593,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
-      // Estados
+      // Estados (ainda em memória)
       createEstado: (data) => {
         requireRole(["ADMIN", "GESTOR"]);
         const sigla = (data.sigla ?? "").trim().toUpperCase();
@@ -634,7 +642,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, estados: s.estados.filter((e) => e.id !== id) }));
       },
 
-      // Cidades
+      // Cidades (ainda em memória)
       createCidade: (data) => {
         requireRole(["ADMIN", "GESTOR"]);
         const nome = (data.nome ?? "").trim();
@@ -688,7 +696,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, cidades: s.cidades.filter((c) => c.id !== id) }));
       },
 
-      // ARPs
+      // ARPs (ainda em memória)
       createArp: (data) => {
         requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const arp: Arp = {
@@ -951,7 +959,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         }));
       },
 
-      // Kits
+      // Kits (ainda em memória)
       createKit: ({ nomeKit, ataId }) => {
         const now = nowIso();
         const kit: Kit = {
@@ -1009,7 +1017,9 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
       updateKitItem: (kitId, kitItemId, patch) => {
         setState((s) => {
           const kitItems = s.kitItems.map((ki) =>
-            ki.id === kitItemId && ki.kitId === kitId ? { ...ki, ...patch, quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade } : ki,
+            ki.id === kitItemId && ki.kitId === kitId
+              ? { ...ki, ...patch, quantidade: patch.quantidade != null ? Number(patch.quantidade) : ki.quantidade }
+              : ki,
           );
           const now = nowIso();
           const kits = s.kits.map((k) => (k.id === kitId ? { ...k, atualizadoEm: now } : k));
@@ -1039,7 +1049,7 @@ export function ArpStoreProvider({ children }: { children: React.ReactNode }) {
         });
       },
 
-      // Oportunidades (novo fluxo)
+      // Oportunidades (ainda em memória)
       createOportunidadeDraft: ({ arpId }) => {
         requireRole(["ADMIN", "GESTOR", "COMERCIAL"]);
         const now = nowIso();
